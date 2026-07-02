@@ -1307,6 +1307,8 @@ function importWorkbook(wb){
     }
   });
   saveData();
+  state.data.forEach(r=>timeSyncFromFiscal(r));
+  timeRefreshUI();
   return{added,updated,total:newRows.length,kept:totalBefore-updated};
 }
 // Lista de períodos (meses) atualmente carregados no Cronograma Mensal
@@ -2196,6 +2198,7 @@ document.addEventListener('keydown',e=>{
     const targetH=single?selH:copyH;
     const targetW=single?selW:copyW;
     let changed=0;
+    const rowsToSyncTime=new Set();
     for(let dr=0;dr<targetH;dr++){
       const row=rows[rect.r0+dr];if(!row)continue;
       for(let dc=0;dc<targetW;dc++){
@@ -2204,12 +2207,15 @@ document.addEventListener('keydown',e=>{
         if(!col||col.type==='status')continue; // STATUS é sempre calculado
         if(!canEditField(row,field,state.currentUser))continue;
         const src=cellClipboard[dr%copyH][dc%copyW];
-        row[field]=src.value;
+        if(field==='tempo'){row[field]=normalizeTempo(src.value);rowsToSyncTime.add(row);}
+        else{row[field]=src.value;}
         changed++;
       }
     }
     if(changed){
       saveData();renderTable();renderStats();
+      rowsToSyncTime.forEach(row=>timeSyncFromFiscal(row));
+      if(rowsToSyncTime.size)timeRefreshUI();
       markCellSelection();
     }
   }
