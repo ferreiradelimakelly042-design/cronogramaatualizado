@@ -211,6 +211,8 @@ th.col-actions,td.col-actions{overflow:visible;text-align:center;}
 .cell-input:focus,.cell-select:focus{outline:none;border-color:var(--accent);background:#fff;}
 td.cell-selected{outline:2px solid var(--accent);outline-offset:-2px;}
 td.cell-copy-flash{background:var(--accent-soft)!important;}
+tr.row-active{background:rgba(37,99,235,.06);}
+tr.row-active td:first-child{box-shadow:inset 4px 0 0 0 var(--accent,#2563eb);}
 .cell-input[readonly],.cell-readonly{color:var(--text-soft);background:transparent;border:none;padding:3px 5px;display:block;overflow:hidden;text-overflow:ellipsis;}
 .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:700;letter-spacing:.2px;}
 .st-feito{background:var(--st-feito-bg);color:var(--st-feito-fg);}
@@ -235,12 +237,18 @@ td.cell-copy-flash{background:var(--accent-soft)!important;}
 .cell-status-select.st-noprazo{background:var(--st-noprazo-bg);color:var(--st-noprazo-fg);}
 .cell-status-select.st-pend{background:var(--st-pend-bg);color:var(--st-pend-fg);}
 .cell-status-select.st-empty{background:transparent;color:var(--text-soft);}
-.cell-postdata-wrap{display:flex;align-items:center;gap:2px;width:100%;}
-.cell-postdata-wrap .cell-input{flex:1;min-width:0;}
-.post-na-btn{flex:none;border:1px solid var(--border);background:transparent;border-radius:4px;font-size:10px;font-weight:700;line-height:1;padding:3px 5px;cursor:pointer;color:var(--text-soft);}
-.post-na-btn:hover{border-color:var(--accent);color:var(--accent);}
-.cell-postdata-na{flex:1;text-align:center;}
-.post-na-btn-undo{color:var(--accent);}
+
+/* ---- Fake-select (div-based, sem <select> nativo) — evita que a lista nativa
+   do navegador trave a seleção em arrasto ao copiar/colar em intervalo ---- */
+.cell-fake-select{display:flex;align-items:center;justify-content:space-between;gap:4px;cursor:pointer;user-select:none;}
+.cell-fake-select:hover{border-color:var(--border);}
+.cell-fake-select:focus{outline:none;border-color:var(--accent);background:#fff;}
+.cell-fake-select .fs-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cell-fake-select .fs-arrow{font-size:9px;opacity:.55;flex-shrink:0;}
+.cell-fake-menu{position:fixed;z-index:9999;background:#fff;border:1px solid var(--border);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.15);min-width:110px;padding:4px;font-size:12.5px;}
+.cell-fake-menu-item{padding:6px 10px;border-radius:4px;cursor:pointer;white-space:nowrap;}
+.cell-fake-menu-item:hover{background:var(--accent-soft,#eef2ff);}
+.cell-fake-menu-item.active{font-weight:700;}
 
 
 
@@ -1231,23 +1239,35 @@ function statusClass(v){
 }
 // Status é sempre calculado — nunca preenchido manualmente.
 // Regra: preencheu FEITO ou N/A na coluna correspondente (ELAB./REV./POST./CONF) => FEITO.
-// Senão, se o prazo já passou => VENCIDO. Senão => NO PRAZO (ou PENDENTE sem prazo).
+// Se marcou PENDENTE explicitamente, o status fica travado em PENDENTE (não vira VENCIDO
+// automaticamente ao passar o prazo — é uma marcação manual de "ainda em aberto").
+// Senão, se o prazo já passou => VENCIDO. Senão => NO PRAZO (ou PENDENTE sem prazo definido).
+function isoToDateSafe(iso){
+  // Aceita "YYYY-MM-DD" mesmo sem zero-padding (ex.: "2026-7-2") e monta a data
+  // em horário local, para nunca dar erro de comparação por causa de formatação.
+  if(!iso) return null;
+  const m=String(iso).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m) return null;
+  const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
+  return isNaN(d.getTime())?null:d;
+}
 function effectiveStatus(row,statusKey){
   const m=STAGE_BY_STATUSKEY[statusKey];
   if(!m) return 'PENDENTE';
   if(m.dateFill){
-    if(isISO(row[m.fillKey])||norm(row[m.fillKey])==='N/A') return 'FEITO';
+    if(isISO(row[m.fillKey])) return 'FEITO';
   } else {
     const raw=norm(row[m.fillKey]);
     if(raw==='FEITO') return 'FEITO';
     if(raw==='N/A') return 'FEITO';
+    if(raw==='PENDENTE') return 'PENDENTE';
   }
-  const deadline=row[m.deadlineKey];
-  if(!isISO(deadline)) return 'PENDENTE';
-  // Compara data de hoje (sem hora) com o prazo
+  const deadlineDate=isoToDateSafe(row[m.deadlineKey]);
+  if(!deadlineDate) return 'PENDENTE';
+  // Compara data de hoje (sem hora) com o prazo, ambos como Date em horário local
   const now=new Date();
-  const todayStr=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  return todayStr>deadline?'VENCIDO':'NO PRAZO';
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  return today>deadlineDate?'VENCIDO':'NO PRAZO';
 }
 function uid(){return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 function makeMatchKey(r){return[r.empresa,r.atividade,r.periodo,r.dep].map(v=>norm(v)).join('|');}
@@ -1670,19 +1690,10 @@ document.querySelectorAll('.mod-tab').forEach(tab=>{
    ========================================================= */
 function buildFilterOptions(){
   document.getElementById('f-dep').innerHTML='<option value="">Departamento (todos)</option>'+['FISCAL','FOPAG','CONT','SOC','FINANC','PF'].map(d=>`<option value="${d}">${d}</option>`).join('');
-  document.getElementById('f-status').innerHTML='<option value="">Status (todos)</option>'+['FEITO','N/A','NO PRAZO','VENCIDO','PENDENTE'].map(s=>`<option value="${s}">${s}</option>`).join('');
+  document.getElementById('f-status').innerHTML='<option value="">Status (todos)</option>'+['FEITO','NO PRAZO','VENCIDO','PENDENTE'].map(s=>`<option value="${s}">${s}</option>`).join('');
   const periods=Array.from(new Set(state.data.map(r=>r.periodo).filter(isISO))).sort();
   document.getElementById('f-periodo').innerHTML='<option value="">Período (todos)</option>'+periods.map(p=>`<option value="${p}">${fmtMonthYear(p)}</option>`).join('');
-  const resps=Array.from(new Set(state.data.flatMap(r=>[r.elab_resp,r.rev_resp,r.post_resp,r.revisor])
-    .filter(v=>v&&norm(v)!=='N/A')
-    .map(v=>String(v).trim())
-    // Um responsável real é um nome curto (ou lista "NOME/NOME"). Se um valor for
-    // muito longo ou tiver tabulação/quebra de linha, é sinal de dado corrompido
-    // (ex.: colagem externa que grudou várias colunas num único campo) — ignora
-    // no filtro em vez de exibir a sujeira. O valor continua visível/editável na
-    // célula da tabela para ser corrigido manualmente.
-    .filter(v=>v.length<=30&&!/[\t\r\n]/.test(v))
-  )).sort();
+  const resps=Array.from(new Set(state.data.flatMap(r=>[r.elab_resp,r.rev_resp,r.post_resp,r.revisor]).filter(v=>v&&norm(v)!=='N/A'))).sort();
   document.getElementById('f-resp').innerHTML='<option value="">Responsável (todos)</option>'+resps.map(r=>`<option value="${r}">${r}</option>`).join('');
 }
 ['f-search','f-dep','f-status','f-periodo','f-resp'].forEach(id=>{
@@ -1854,7 +1865,7 @@ function renderStats(){
   const act=v=>cur===v?' active':'';
   document.getElementById('stats-bar').innerHTML=`
     <div class="stat-card total${act('')}" data-statfilter=""><div class="num">${rows.length}</div><div class="lbl">Atividades</div></div>
-    <div class="stat-card atraso${act('VENCIDO')}" data-statfilter="VENCIDO"><div class="num">${count('VENCIDO')}</div><div class="lbl">Vencido</div></div>
+    <div class="stat-card atraso${act('VENCIDO')}" data-statfilter="VENCIDO"><div class="num">${count('VENCIDO')}</div><div class="lbl">Em atraso</div></div>
     <div class="stat-card noprazo${act('NO PRAZO')}" data-statfilter="NO PRAZO"><div class="num">${count('NO PRAZO')}</div><div class="lbl">No prazo</div></div>
     <div class="stat-card feito${act('FEITO')}" data-statfilter="FEITO"><div class="num">${count('FEITO')}</div><div class="lbl">Feito</div></div>`;
   updateFiscalAtivBtnState();
@@ -1877,8 +1888,8 @@ function cellHTML(row,col){
   const editable=col.adminOnly?state.currentUser.role==='admin':canEditField(row,col.key,state.currentUser);
   const dataAttrs=`data-id="${row.id}" data-field="${col.key}"`;
   if(col.type==='flag'){
-    if(!editable)return`<span class="flag-${value||'F'}">${esc(value)}</span>`;
-    return`<select class="cell-select" ${dataAttrs}>`+['F','V'].map(o=>`<option value="${o}" ${o===value?'selected':''}>${o}</option>`).join('')+`</select>`;
+    if(!editable)return`<span class="flag-${value||'F'}" ${dataAttrs}>${esc(value)}</span>`;
+    return`<div class="cell-select cell-fake-select" ${dataAttrs} data-kind="flag" data-value="${esc(value)}" tabindex="0"><span class="fs-label">${esc(value||'F')}</span><span class="fs-arrow">▾</span></div>`;
   }
   if(col.type==='status'){
     // STATUS é sempre calculado e bloqueado — nunca editável diretamente, nem por admin.
@@ -1888,35 +1899,25 @@ function cellHTML(row,col){
   }
   if(col.type==='fillstatus'){
     const raw=norm(value);
-    if(!editable)return`<span class="cell-readonly">${raw==='FEITO'?'Feito':raw==='N/A'?'N/A':raw==='PENDENTE'?'Pendente':''}</span>`;
+    if(!editable)return`<span class="cell-readonly" ${dataAttrs}>${raw==='FEITO'?'Feito':raw==='N/A'?'N/A':raw==='PENDENTE'?'Pendente':''}</span>`;
     const selCls=raw==='FEITO'?'st-feito':raw==='N/A'?'st-na':raw==='PENDENTE'?'st-pend':'st-empty';
-    return`<select class="cell-status-select ${selCls}" ${dataAttrs} title="FEITO, N/A ou Pendente"><option value="" ${raw===''?'selected':''}>—</option><option value="FEITO" ${raw==='FEITO'?'selected':''}>Feito</option><option value="N/A" ${raw==='N/A'?'selected':''}>N/A</option><option value="PENDENTE" ${raw==='PENDENTE'?'selected':''}>Pendente</option></select>`;
+    const labelText=raw==='FEITO'?'Feito':raw==='N/A'?'N/A':raw==='PENDENTE'?'Pendente':'—';
+    return`<div class="cell-status-select cell-fake-select ${selCls}" ${dataAttrs} data-kind="fillstatus" data-value="${raw}" tabindex="0" title="FEITO, N/A ou Pendente"><span class="fs-label">${labelText}</span><span class="fs-arrow">▾</span></div>`;
   }
   if(col.type==='select'){
-    if(!editable)return`<span class="cell-readonly">${esc(value)}</span>`;
-    return`<select class="cell-select" ${dataAttrs}>`+col.options.map(o=>`<option value="${o}" ${o===value?'selected':''}>${o}</option>`).join('')+`</select>`;
+    if(!editable)return`<span class="cell-readonly" ${dataAttrs}>${esc(value)}</span>`;
+    return`<div class="cell-select cell-fake-select" ${dataAttrs} data-kind="select" data-value="${esc(value)}" tabindex="0"><span class="fs-label">${esc(value||'—')}</span><span class="fs-arrow">▾</span></div>`;
   }
   if(col.type==='month'){
-    if(!editable)return`<span class="cell-readonly">${esc(fmtMonthYear(value))}</span>`;
+    if(!editable)return`<span class="cell-readonly" ${dataAttrs}>${esc(fmtMonthYear(value))}</span>`;
     return`<span class="cell-month-display" ${dataAttrs} title="Clique para alterar">${esc(fmtMonthYear(value)||'—')}</span><input type="month" class="cell-input cell-month-input" style="display:none;" value="${isISO(value)?value.slice(0,7):''}" ${dataAttrs}>`;
-  }
-  if(col.key==='post_data2'){
-    const isNA=norm(value)==='N/A';
-    if(!editable){
-      const disp=isNA?'N/A':(isISO(value)?fmtDateBR(value):(value||''));
-      return`<span class="cell-readonly" title="${esc(disp)}">${esc(disp)}</span>`;
-    }
-    if(isNA){
-      return`<div class="cell-postdata-wrap"><span class="badge st-na cell-postdata-na">N/A</span><button type="button" class="post-na-btn post-na-btn-undo" data-postna-id="${row.id}" title="Informar uma data">📅</button></div>`;
-    }
-    return`<div class="cell-postdata-wrap"><input type="date" class="cell-input" value="${isISO(value)?value:''}" ${dataAttrs}><button type="button" class="post-na-btn" data-postna-id="${row.id}" title="Marcar como N/A">N/A</button></div>`;
   }
   if(col.type==='date'){
     const disp=isISO(value)?fmtDateBR(value):(value||'');
-    if(!editable)return`<span class="cell-readonly" title="${esc(disp)}">${esc(disp)}</span>`;
+    if(!editable)return`<span class="cell-readonly" title="${esc(disp)}" ${dataAttrs}>${esc(disp)}</span>`;
     return`<input type="date" class="cell-input" value="${value}" ${dataAttrs}>`;
   }
-  if(!editable)return`<span class="cell-readonly" title="${esc(value)}">${esc(value)}</span>`;
+  if(!editable)return`<span class="cell-readonly" title="${esc(value)}" ${dataAttrs}>${esc(value)}</span>`;
   if(col.key==='tempo')
     return`<input type="text" class="cell-input" value="${esc(value)}" title="${esc(value)}" placeholder="00:50" ${dataAttrs}>`;
   return`<input type="text" class="cell-input" value="${esc(value)}" title="${esc(value)}" ${dataAttrs}>`;
@@ -2049,25 +2050,6 @@ function renderAll(){renderStats();renderTable();}
 /* =========================================================
    EVENTOS DA TABELA FISCAL
    ========================================================= */
-// Evita que uma colagem externa (ex.: várias colunas do Excel copiadas de fora
-// do app) seja despejada inteira dentro de um único campo de texto, o que
-// corrompe a célula (fica com o valor de várias colunas grudado). Mantém
-// apenas a primeira "célula" do que foi colado.
-function sanitizePasteEvent(e){
-  const el=e.target;
-  if(!(el&&el.tagName==='INPUT'&&el.type==='text'&&el.classList.contains('cell-input')))return;
-  const cd=e.clipboardData||window.clipboardData;if(!cd)return;
-  const text=cd.getData('text');if(!text)return;
-  if(/[\t\r\n]/.test(text)){
-    e.preventDefault();
-    const clean=text.split(/[\t\r\n]/)[0].trim().slice(0,80);
-    const start=el.selectionStart??el.value.length,end=el.selectionEnd??el.value.length;
-    el.setRangeText(clean,start,end,'end');
-    el.dispatchEvent(new Event('change',{bubbles:true}));
-  }
-}
-document.getElementById('table-wrap').addEventListener('paste',sanitizePasteEvent);
-document.getElementById('detail-body').addEventListener('paste',sanitizePasteEvent);
 document.getElementById('table-wrap').addEventListener('change',e=>{
   const el=e.target;const id=el.dataset.id,field=el.dataset.field;if(!id||!field)return;
   const row=state.data.find(r=>r.id===id);if(!row)return;
@@ -2095,15 +2077,15 @@ document.getElementById('table-wrap').addEventListener('blur',e=>{
   timeSyncFromFiscal(row);timeRefreshUI();
 },true);
 document.getElementById('table-wrap').addEventListener('click',e=>{
-  // Alterna POST. entre data e N/A
-  const naBtn=e.target.closest('.post-na-btn');
-  if(naBtn){
-    const id=naBtn.dataset.postnaId;
-    const row=state.data.find(r=>r.id===id);
-    if(row&&canEditField(row,'post_data2',state.currentUser)){
-      row.post_data2=(norm(row.post_data2)==='N/A')?'':'N/A';
-      saveData();renderTable();renderStats();
-    }
+  // Célula "fake-select" (ELAB./REV./POST./CONF., DEP., flag): só abre o menu
+  // customizado quando o clique resultou numa seleção de UMA única célula —
+  // ou seja, não é parte de um arrasto/seleção de intervalo (isso é o que
+  // antes travava ao usar o <select> nativo do navegador).
+  const fakeSel=e.target.closest('.cell-fake-select');
+  if(fakeSel){
+    const rect=cellSelRect();
+    const onlyThis=rect&&rect.r0===rect.r1&&rect.c0===rect.c1;
+    if(onlyThis)openCellFakeMenu(fakeSel);
     return;
   }
   // Clique no PERIODO abreviado abre o seletor nativo de mês
@@ -2135,6 +2117,66 @@ document.getElementById('table-wrap').addEventListener('click',e=>{
   }
   // (expand e modal de detalhe removidos)
 });
+
+/* =========================================================
+   MENU CUSTOMIZADO PARA CÉLULAS "FAKE-SELECT"
+   (ELAB./REV./POST./CONF., DEP., flag) — substitui o <select> nativo do
+   navegador. O <select> nativo abre uma lista que captura o mouse/teclado
+   assim que você clica, o que impedia estender a seleção (arrasto ou
+   shift+clique) por cima dessas colunas para copiar/colar em intervalo.
+   Este menu é 100% controlado por JS e só abre num clique único numa
+   única célula — nunca durante um arrasto ou seleção de intervalo.
+   ========================================================= */
+let activeFakeMenu=null;
+function closeCellFakeMenu(){
+  if(activeFakeMenu){ activeFakeMenu.remove(); activeFakeMenu=null; }
+  document.removeEventListener('mousedown',fakeMenuOutsideHandler,true);
+}
+function fakeMenuOutsideHandler(e){
+  if(activeFakeMenu&&!activeFakeMenu.contains(e.target))closeCellFakeMenu();
+}
+function openCellFakeMenu(cellEl){
+  closeCellFakeMenu();
+  const id=cellEl.dataset.id,field=cellEl.dataset.field,kind=cellEl.dataset.kind;
+  const row=state.data.find(r=>r.id===id);if(!row)return;
+  const col=COLUMNS.find(c=>c.key===field);if(!col)return;
+  if(!canEditField(row,field,state.currentUser))return;
+  let options;
+  if(kind==='fillstatus'){
+    options=[{value:'',label:'—'},{value:'FEITO',label:'Feito'},{value:'N/A',label:'N/A'},{value:'PENDENTE',label:'Pendente'}];
+  } else if(kind==='flag'){
+    options=['F','V'].map(o=>({value:o,label:o}));
+  } else {
+    options=(col.options||[]).map(o=>({value:o,label:o}));
+  }
+  const current=norm(row[field]??'');
+  const menu=document.createElement('div');
+  menu.className='cell-fake-menu';
+  options.forEach(opt=>{
+    const it=document.createElement('div');
+    it.className='cell-fake-menu-item'+(norm(opt.value)===current?' active':'');
+    it.textContent=opt.label;
+    it.addEventListener('mousedown',ev=>ev.stopPropagation());
+    it.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      row[field]=opt.value;
+      saveData();
+      closeCellFakeMenu();
+      renderTable();renderStats();
+      markCellSelection();
+    });
+    menu.appendChild(it);
+  });
+  document.body.appendChild(menu);
+  const r=cellEl.getBoundingClientRect();
+  menu.style.left=Math.round(r.left)+'px';
+  menu.style.top=Math.round(r.bottom+2)+'px';
+  const mw=menu.offsetWidth,vw=window.innerWidth;
+  if(r.left+mw>vw-8)menu.style.left=Math.max(8,vw-mw-8)+'px';
+  activeFakeMenu=menu;
+  setTimeout(()=>document.addEventListener('mousedown',fakeMenuOutsideHandler,true),0);
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Escape')closeCellFakeMenu(); });
 
 /* =========================================================
    COPIAR / COLAR CÉLULAS (estilo Excel) — Cronograma Mensal
@@ -2176,15 +2218,20 @@ function cellCoordsFromEl(el){
 }
 function clearCellSelection(){
   document.querySelectorAll('#table-wrap .cell-selected').forEach(el=>el.classList.remove('cell-selected'));
+  document.querySelectorAll('#table-wrap tr.row-active').forEach(el=>el.classList.remove('row-active'));
   cellSelAnchor=null;cellSelActive=null;cellSelDragging=false;
 }
 function markCellSelection(){
   document.querySelectorAll('#table-wrap .cell-selected').forEach(el=>el.classList.remove('cell-selected'));
+  document.querySelectorAll('#table-wrap tr.row-active').forEach(el=>el.classList.remove('row-active'));
   const rect=cellSelRect();if(!rect)return;
   const rows=getFilteredRows();
   const fields=cellSelColFields();
   for(let ri=rect.r0;ri<=rect.r1;ri++){
     const row=rows[ri];if(!row)continue;
+    // Destaque azul no início da linha selecionada, para localizar fácil onde preencher.
+    const tr=document.querySelector(`#table-wrap tr[data-rowid="${row.id}"]`);
+    if(tr)tr.classList.add('row-active');
     for(let ci=rect.c0;ci<=rect.c1;ci++){
       const field=fields[ci];if(!field)continue;
       const el=document.querySelector(`#table-wrap [data-id="${row.id}"][data-field="${field}"]`);
@@ -2198,6 +2245,11 @@ document.getElementById('table-wrap').addEventListener('mousedown',e=>{
   if(!el)return;
   const coords=cellCoordsFromEl(el);
   if(!coords)return;
+  // Colunas com <select> (ELAB./REV./POST./CONF., flag etc.) abrem a lista nativa
+  // ao clicar, o que atrapalha estender a seleção. Num shift+clique (ou quando já
+  // existe uma seleção em andamento) a intenção é claramente selecionar, não abrir
+  // a lista — então bloqueamos a abertura nesses casos.
+  if(el.tagName==='SELECT'&&(e.shiftKey||cellSelDragging)){e.preventDefault();}
   if(e.shiftKey&&cellSelAnchor){
     cellSelActive=coords;
     markCellSelection();
@@ -2208,6 +2260,11 @@ document.getElementById('table-wrap').addEventListener('mousedown',e=>{
 });
 document.getElementById('table-wrap').addEventListener('mouseover',e=>{
   if(!cellSelDragging)return;
+  // Se o clique inicial abriu a lista nativa de um <select>, fecha-a assim que o
+  // arrasto continuar para outra célula, para não travar a seleção do intervalo.
+  if(document.activeElement&&document.activeElement.tagName==='SELECT'&&document.activeElement!==e.target){
+    document.activeElement.blur();
+  }
   const el=e.target.closest('[data-id][data-field]');
   if(!el)return;
   const coords=cellCoordsFromEl(el);
@@ -2519,16 +2576,7 @@ function openDetailModal(row){
     const v=row[key]??'';
     const editable=adminOnlyField ? isAdmin : canRow;
     let inp;
-    if(key==='post_data2'){
-      const isNA=norm(v)==='N/A';
-      if(!editable){
-        inp=`<span class="dm-input" style="background:var(--bg);cursor:default;">${isNA?'N/A':(fmtDateBR(v)||'—')}</span>`;
-      } else if(isNA){
-        inp=`<div class="cell-postdata-wrap"><span class="badge st-na cell-postdata-na">N/A</span><button type="button" class="post-na-btn post-na-btn-undo" data-postna-dm="1" title="Informar uma data">📅</button></div>`;
-      } else {
-        inp=`<div class="cell-postdata-wrap"><input type="date" class="dm-input" data-dmkey="${key}" value="${isISO(v)?v:''}"><button type="button" class="post-na-btn" data-postna-dm="1" title="Marcar como N/A">N/A</button></div>`;
-      }
-    } else if(type==='date'){
+    if(type==='date'){
       inp=editable
         ?`<input type="date" class="dm-input" data-dmkey="${key}" value="${v}">`
         :`<span class="dm-input" style="background:var(--bg);cursor:default;">${fmtDateBR(v)||'—'}</span>`;
@@ -2612,15 +2660,6 @@ function openDetailModal(row){
   document.querySelectorAll('#detail-body .dm-input').forEach(el=>{
     el.addEventListener('change',()=>applyDetailChange(el));
   });
-  const naBtn=document.querySelector('#detail-body [data-postna-dm]');
-  if(naBtn){
-    naBtn.addEventListener('click',()=>{
-      const r=state.data.find(x=>x.id===__detailRowId);if(!r)return;
-      r.post_data2=(norm(r.post_data2)==='N/A')?'':'N/A';
-      saveData();renderAll();
-      openDetailModal(r);
-    });
-  }
   openModal('modal-detail');
 }
 
@@ -3337,20 +3376,15 @@ function timeSyncFromFiscal(row){
     if(existingIdx>=0){timeState.data.splice(existingIdx,1);saveTimeData();}
     return;
   }
-  const existing=existingIdx>=0?timeState.data[existingIdx]:null;
   const entry={
-    id:existing?existing.id:timeUid(),
+    id:existingIdx>=0?timeState.data[existingIdx].id:timeUid(),
     srcId:row.id,srcType:'fiscal',
     empresa:row.empresa||'',
     colaborador:row.elab_resp||row.rev_resp||row.post_resp||row.revisor||'',
     setor:row.dep||'',
     descricao:row.atividade||'',
     tempo:row.tempo||'',
-    // Data do lançamento no TIME = dia em que o tempo foi preenchido (hoje),
-    // não o período/prazo fiscal. Uma vez criado, o lançamento preserva sua
-    // data original nas sincronizações seguintes (o usuário pode ajustá-la
-    // manualmente na aba TIME).
-    data:existing?existing.data:new Date().toISOString().slice(0,10),
+    data:row.periodo||'',
     origem:'auto-fiscal'
   };
   if(existingIdx>=0){timeState.data[existingIdx]=entry;}
