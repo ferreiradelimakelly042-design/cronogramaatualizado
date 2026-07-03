@@ -1281,7 +1281,7 @@ function isResponsavel(row,user){return matchResp(row.elab_resp,user.username)||
 function canEditField(row,fieldKey,user){
   if(!user) return false;
   if(user.role==='admin') return true;
-  if(fieldKey==='empresa'||fieldKey==='periodo') return false;
+  if(fieldKey==='periodo') return false;
   return true;
 }
 // Qualquer usuário pode editar suas próprias linhas no modal de detalhe
@@ -1688,12 +1688,23 @@ document.querySelectorAll('.mod-tab').forEach(tab=>{
 /* =========================================================
    FILTROS FISCAL
    ========================================================= */
+// Um "responsável" válido é um nome curto (ex.: "VANI", "ANA/MAYH").
+// Isso descarta valores corrompidos onde uma linha inteira foi colada
+// por engano dentro do campo de responsável.
+function isValidResp(v){
+  if(!v) return false;
+  const s=String(v).trim();
+  if(!s || s.length>30) return false;
+  if(/[\t\n]/.test(s)) return false;
+  if((s.match(/ /g)||[]).length>2) return false;
+  return true;
+}
 function buildFilterOptions(){
   document.getElementById('f-dep').innerHTML='<option value="">Departamento (todos)</option>'+['FISCAL','FOPAG','CONT','SOC','FINANC','PF'].map(d=>`<option value="${d}">${d}</option>`).join('');
   document.getElementById('f-status').innerHTML='<option value="">Status (todos)</option>'+['FEITO','NO PRAZO','VENCIDO','PENDENTE'].map(s=>`<option value="${s}">${s}</option>`).join('');
   const periods=Array.from(new Set(state.data.map(r=>r.periodo).filter(isISO))).sort();
   document.getElementById('f-periodo').innerHTML='<option value="">Período (todos)</option>'+periods.map(p=>`<option value="${p}">${fmtMonthYear(p)}</option>`).join('');
-  const resps=Array.from(new Set(state.data.flatMap(r=>[r.elab_resp,r.rev_resp,r.post_resp,r.revisor]).filter(v=>v&&norm(v)!=='N/A'))).sort();
+  const resps=Array.from(new Set(state.data.flatMap(r=>[r.elab_resp,r.rev_resp,r.post_resp,r.revisor]).filter(v=>v&&norm(v)!=='N/A'&&isValidResp(v)))).sort();
   document.getElementById('f-resp').innerHTML='<option value="">Responsável (todos)</option>'+resps.map(r=>`<option value="${r}">${r}</option>`).join('');
 }
 ['f-search','f-dep','f-status','f-periodo','f-resp'].forEach(id=>{
@@ -1977,13 +1988,14 @@ var colFilters={};
 const FILTERABLE_COLS=new Set(COLUMNS.map(c=>c.key));
 function getColFilterValues(key){
   const colDef=COLUMNS.find(c=>c.key===key);
+  const RESP_KEYS=new Set(['elab_resp','rev_resp','post_resp','revisor']);
   const all=state.data.map(r=>{
     if(key.endsWith('_status')) return effectiveStatus(r,key);
     let v=r[key]??'';
     if(key==='periodo'&&v) v=fmtMonthYear(v);
     else if(colDef&&colDef.type==='date'&&isISO(v)) v=fmtDateBR(v);
     return v;
-  }).filter(v=>v&&String(v).trim()!=='');
+  }).filter(v=>v&&String(v).trim()!=='').filter(v=>!RESP_KEYS.has(key)||isValidResp(v));
   return Array.from(new Set(all)).sort();
 }
 function groupColClass(group){
@@ -2564,6 +2576,10 @@ document.addEventListener('click',e=>{
    MODAL DETALHE / EDIÇÃO FISCAL — editável por todos os usuários
    ========================================================= */
 let __detailRowId=null;
+function empresasDoCronograma(){
+  return Array.from(new Set(state.data.map(r=>r.empresa).filter(v=>v&&String(v).trim()!=='')))
+    .sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
 
 function openDetailModal(row){
   __detailRowId=row.id;
@@ -2608,7 +2624,7 @@ function openDetailModal(row){
 
   document.getElementById('detail-body').innerHTML=`
     <div class="dm-grid">
-      ${fld('empresa','Empresa','text',null,true,true)}
+      ${fld('empresa','Empresa','select',['',...empresasDoCronograma()],true,false)}
       ${fld('atividade','Atividade','text',null,true,false)}
       ${fld('rt','RT')} ${fld('es','Estado')} ${fld('cidade','Cidade')} ${fld('ativ','ATIV')}
       ${fld('dep','Departamento','select',['','FISCAL','FOPAG','CONT','SOC','FINANC','PF'],false,false)}
@@ -5689,4 +5705,4 @@ tryRestoreSession();
 </script>
 
 </body>
-</html> 
+</html>
