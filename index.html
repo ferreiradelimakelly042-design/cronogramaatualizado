@@ -206,6 +206,15 @@ th.col-actions,td.col-actions{overflow:visible;text-align:center;}
 .col-filter-actions{display:flex;justify-content:space-between;gap:8px;padding:2px 14px 6px;font-size:11px;border-bottom:1px solid var(--border);margin-bottom:4px;}
 .col-filter-actions span{color:var(--accent);cursor:pointer;text-decoration:underline;white-space:nowrap;flex-shrink:0;}
 
+.dm-datena-wrap{display:flex;align-items:center;gap:5px;width:100%;}
+.dm-datena-wrap .dm-input{flex:1 1 auto;min-width:0;}
+.dm-na-toggle{flex:0 0 auto;border:1px solid var(--border);border-radius:5px;background:var(--st-na-bg,#EEF0F3);color:var(--st-na-fg,#7C8696);font-size:11.5px;font-weight:700;padding:4px 8px;cursor:pointer;}
+.dm-na-toggle.is-na{flex:1 1 auto;}
+.cell-datena-wrap{display:flex;align-items:center;gap:3px;width:100%;}
+.cell-datena-wrap .cell-datena-input{flex:1 1 auto;min-width:0;}
+.btn-na-toggle{flex:0 0 auto;border:1px solid var(--border);border-radius:4px;background:var(--st-na-bg,#EEF0F3);color:var(--st-na-fg,#7C8696);font-size:10.5px;font-weight:700;padding:2px 5px;cursor:pointer;line-height:1.4;}
+.btn-na-toggle:hover{filter:brightness(0.95);}
+.btn-na-toggle.is-na{flex:1 1 auto;background:var(--st-na-bg,#EEF0F3);color:var(--st-na-fg,#7C8696);}
 .cell-input,.cell-select{width:100%;border:1px solid transparent;border-radius:5px;padding:3px 5px;font-size:12.5px;background:transparent;}
 .cell-input:hover,.cell-select:hover{border-color:var(--border);}
 .cell-input:focus,.cell-select:focus{outline:none;border-color:var(--accent);background:#fff;}
@@ -989,7 +998,7 @@ const COLUMNS = [
   {key:'rev_resp',   label:'RESP.',      group:'REVISÃO',          type:'text'},
   {key:'post_data',  label:'DATA',       group:'DATA DE POSTAGEM', type:'date',   stage:'postagem'},
   {key:'post_status',label:'STATUS',     group:'DATA DE POSTAGEM', type:'status', stage:'postagem'},
-  {key:'post_data2', label:'POST.',      group:'DATA DE POSTAGEM', type:'date',   stage:'postagem'},
+  {key:'post_data2', label:'POST.',      group:'DATA DE POSTAGEM', type:'date',   stage:'postagem', allowNA:true},
   {key:'post_resp',  label:'RESP.',      group:'DATA DE POSTAGEM', type:'text'},
   {key:'conf_data',  label:'DATA',       group:'CONFERÊNCIA',      type:'date',   stage:'conferencia'},
   {key:'conf_status',label:'STATUS',     group:'CONFERÊNCIA',      type:'status', stage:'conferencia'},
@@ -1241,7 +1250,7 @@ function statusClass(v){
 // Regra: preencheu FEITO ou N/A na coluna correspondente (ELAB./REV./POST./CONF) => FEITO.
 // Se marcou PENDENTE explicitamente, o status fica travado em PENDENTE (não vira VENCIDO
 // automaticamente ao passar o prazo — é uma marcação manual de "ainda em aberto").
-// Senão, se o prazo já passou => VENCIDO. Senão => NO PRAZO (ou PENDENTE sem prazo definido).
+// Senão, se o prazo já passou (ou vence hoje) => VENCIDO. Senão => NO PRAZO (ou PENDENTE sem prazo definido).
 function isoToDateSafe(iso){
   // Aceita "YYYY-MM-DD" mesmo sem zero-padding (ex.: "2026-7-2") e monta a data
   // em horário local, para nunca dar erro de comparação por causa de formatação.
@@ -1256,6 +1265,7 @@ function effectiveStatus(row,statusKey){
   if(!m) return 'PENDENTE';
   if(m.dateFill){
     if(isISO(row[m.fillKey])) return 'FEITO';
+    if(norm(row[m.fillKey])==='N/A') return 'FEITO';
   } else {
     const raw=norm(row[m.fillKey]);
     if(raw==='FEITO') return 'FEITO';
@@ -1267,7 +1277,8 @@ function effectiveStatus(row,statusKey){
   // Compara data de hoje (sem hora) com o prazo, ambos como Date em horário local
   const now=new Date();
   const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  return today>deadlineDate?'VENCIDO':'NO PRAZO';
+  // Vence hoje já conta como VENCIDO (não apenas quando o prazo já passou).
+  return today>=deadlineDate?'VENCIDO':'NO PRAZO';
 }
 function uid(){return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 function makeMatchKey(r){return[r.empresa,r.atividade,r.periodo,r.dep].map(v=>norm(v)).join('|');}
@@ -1926,6 +1937,13 @@ function cellHTML(row,col){
   if(col.type==='date'){
     const disp=isISO(value)?fmtDateBR(value):(value||'');
     if(!editable)return`<span class="cell-readonly" title="${esc(disp)}" ${dataAttrs}>${esc(disp)}</span>`;
+    if(col.allowNA){
+      const isNA=norm(value)==='N/A';
+      return`<div class="cell-datena-wrap">`
+        +`<input type="date" class="cell-input cell-datena-input" value="${isISO(value)?value:''}" ${dataAttrs} ${isNA?'style="display:none;"':''}>`
+        +`<button type="button" class="btn-na-toggle${isNA?' is-na':''}" ${dataAttrs} title="${isNA?'Clique para preencher uma data':'Marcar como N/A (não há data de postagem)'}">${isNA?'N/A ✕':'N/A'}</button>`
+        +`</div>`;
+    }
     return`<input type="date" class="cell-input" value="${value}" ${dataAttrs}>`;
   }
   if(!editable)return`<span class="cell-readonly" title="${esc(value)}" ${dataAttrs}>${esc(value)}</span>`;
@@ -2089,6 +2107,17 @@ document.getElementById('table-wrap').addEventListener('blur',e=>{
   timeSyncFromFiscal(row);timeRefreshUI();
 },true);
 document.getElementById('table-wrap').addEventListener('click',e=>{
+  // Botão "N/A" nas colunas de data com allowNA (ex.: POST.): alterna entre
+  // marcar como N/A (sem data) e voltar a mostrar o campo de data para preenchimento.
+  const naToggle=e.target.closest('.btn-na-toggle');
+  if(naToggle){
+    const id=naToggle.dataset.id,field=naToggle.dataset.field;
+    const row=state.data.find(r=>r.id===id);if(!row)return;
+    if(!canEditField(row,field,state.currentUser))return;
+    row[field]=(norm(row[field])==='N/A')?'':'N/A';
+    saveData();renderTable();renderStats();
+    return;
+  }
   // Célula "fake-select" (ELAB./REV./POST./CONF., DEP., flag): só abre o menu
   // customizado quando o clique resultou numa seleção de UMA única célula —
   // ou seja, não é parte de um arrasto/seleção de intervalo (isso é o que
@@ -2593,9 +2622,17 @@ function openDetailModal(row){
     const editable=adminOnlyField ? isAdmin : canRow;
     let inp;
     if(type==='date'){
-      inp=editable
-        ?`<input type="date" class="dm-input" data-dmkey="${key}" value="${v}">`
-        :`<span class="dm-input" style="background:var(--bg);cursor:default;">${fmtDateBR(v)||'—'}</span>`;
+      const allowNA=COLUMNS.find(c=>c.key===key&&c.allowNA);
+      if(allowNA){
+        const isNA=norm(v)==='N/A';
+        inp=editable
+          ?`<div class="dm-datena-wrap"><input type="date" class="dm-input" data-dmkey="${key}" value="${isISO(v)?v:''}" ${isNA?'style="display:none;"':''}><button type="button" class="dm-na-toggle${isNA?' is-na':''}" data-dmnakey="${key}">${isNA?'N/A ✕':'N/A'}</button></div>`
+          :`<span class="dm-input" style="background:var(--bg);cursor:default;">${isNA?'N/A':(fmtDateBR(v)||'—')}</span>`;
+      } else {
+        inp=editable
+          ?`<input type="date" class="dm-input" data-dmkey="${key}" value="${v}">`
+          :`<span class="dm-input" style="background:var(--bg);cursor:default;">${fmtDateBR(v)||'—'}</span>`;
+      }
     } else if(type==='month'){
       inp=editable
         ?`<input type="month" class="dm-input" data-dmkey="${key}" value="${isISO(v)?v.slice(0,7):''}">`
@@ -2675,6 +2712,17 @@ function openDetailModal(row){
   // Bind events
   document.querySelectorAll('#detail-body .dm-input').forEach(el=>{
     el.addEventListener('change',()=>applyDetailChange(el));
+  });
+  document.querySelectorAll('#detail-body .dm-na-toggle').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const r=state.data.find(x=>x.id===__detailRowId);if(!r)return;
+      const key=btn.dataset.dmnakey;
+      if(!canEditField(r,key,state.currentUser))return;
+      r[key]=(norm(r[key])==='N/A')?'':'N/A';
+      saveData();renderAll();
+      refreshDetailBadges();
+      openDetailModal(r);
+    });
   });
   openModal('modal-detail');
 }
@@ -3392,6 +3440,10 @@ function timeSyncFromFiscal(row){
     if(existingIdx>=0){timeState.data.splice(existingIdx,1);saveTimeData();}
     return;
   }
+  // A data do lançamento no TIME deve refletir quando o tempo foi de fato
+  // preenchido, não o período (mês) da atividade — usar "periodo" travava
+  // sempre no dia 01 do mês. Mantém a data já existente do lançamento (se
+  // houver) e só usa a data de hoje para lançamentos novos.
   const entry={
     id:existingIdx>=0?timeState.data[existingIdx].id:timeUid(),
     srcId:row.id,srcType:'fiscal',
@@ -3400,7 +3452,7 @@ function timeSyncFromFiscal(row){
     setor:row.dep||'',
     descricao:row.atividade||'',
     tempo:row.tempo||'',
-    data:row.periodo||'',
+    data:existingIdx>=0?(timeState.data[existingIdx].data||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10),
     origem:'auto-fiscal'
   };
   if(existingIdx>=0){timeState.data[existingIdx]=entry;}
@@ -3424,7 +3476,7 @@ function timeSyncFromCont(row){
     setor:'CONTABILIDADE',
     descricao:'Contabilidade — '+(row.freq||row.trib||''),
     tempo:row.tempo||'',
-    data:new Date().toISOString().slice(0,10),
+    data:existingIdx>=0?(timeState.data[existingIdx].data||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10),
     origem:'auto-cont'
   };
   if(existingIdx>=0){timeState.data[existingIdx]=entry;}
