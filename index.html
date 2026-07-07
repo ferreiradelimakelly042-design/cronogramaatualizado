@@ -2641,6 +2641,15 @@ function openDetailModal(row){
       inp=editable
         ?`<select class="dm-input" data-dmkey="${key}">`+opts.map(o=>`<option value="${o}" ${o===v?'selected':''}>${o||'—'}</option>`).join('')+`</select>`
         :`<span class="dm-input" style="background:var(--bg);cursor:default;">${esc(v)||'—'}</span>`;
+    } else if(type==='empresa-combo'){
+      // Admin pode digitar empresa nova (input + datalist); colaborador só seleciona da lista existente
+      if(!editable){
+        inp=`<span class="dm-input" style="background:var(--bg);cursor:default;">${esc(v)||'—'}</span>`;
+      } else if(isAdmin){
+        inp=`<input type="text" class="dm-input" data-dmkey="${key}" value="${esc(v)}" list="dm-empresa-datalist" autocomplete="off" placeholder="Selecione ou digite uma nova empresa...">`;
+      } else {
+        inp=`<select class="dm-input" data-dmkey="${key}">`+opts.map(o=>`<option value="${o}" ${o===v?'selected':''}>${o||'—'}</option>`).join('')+`</select>`;
+      }
     } else if(type==='status'){
       // STATUS é sempre calculado e bloqueado — apenas exibição, nunca editável.
       const eff=effectiveStatus(row,key);
@@ -2660,8 +2669,9 @@ function openDetailModal(row){
   };
 
   document.getElementById('detail-body').innerHTML=`
+    <datalist id="dm-empresa-datalist">${empresasDoCronograma().map(e=>`<option value="${esc(e)}">`).join('')}</datalist>
     <div class="dm-grid">
-      ${fld('empresa','Empresa','select',['',...empresasDoCronograma()],true,false)}
+      ${fld('empresa','Empresa','empresa-combo',['',...empresasDoCronograma()],true,false)}
       ${fld('atividade','Atividade','text',null,true,false)}
       ${fld('rt','RT')} ${fld('es','Estado')} ${fld('cidade','Cidade')} ${fld('ativ','ATIV')}
       ${fld('dep','Departamento','select',['','FISCAL','FOPAG','CONT','SOC','FINANC','PF'],false,false)}
