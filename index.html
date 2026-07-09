@@ -185,8 +185,12 @@ thead tr.group-row th{background:#E3E9F1;font-size:10.5px;text-transform:upperca
 tbody td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:5px 7px;white-space:nowrap;overflow:hidden;vertical-align:middle;}
 tbody tr:hover{background:#F5F8FF;}
 tbody tr[data-rowid]{cursor:pointer;}
-tbody td.col-empresa,thead th.col-empresa{position:sticky;left:0;background:#fff;z-index:1;box-shadow:1px 0 0 var(--border);}
-thead tr.group-row th.col-empresa,thead tr.head-row th.col-empresa{background:#F0F3F7;}
+tbody tr.row-selected td{background:#93C5FD !important;}
+tbody tr.row-selected:hover td{background:#7DB2F5 !important;}
+#recibo-wrap td.recibo-frozen-col{position:relative;background:#fff;z-index:1;box-shadow:1px 0 0 var(--border);will-change:transform;}
+#recibo-wrap th.recibo-frozen-col{background:#F0F3F7;z-index:3;box-shadow:1px 0 0 var(--border);will-change:transform;}
+tbody td.col-empresa,tbody td.col-frozen{position:relative;background:#fff;z-index:1;box-shadow:1px 0 0 var(--border);will-change:transform;}
+thead th.col-empresa,thead th.col-frozen{background:#F0F3F7;box-shadow:1px 0 0 var(--border);will-change:transform;}
 td.col-atividade,td.col-obs{white-space:normal;}
 th.col-actions,td.col-actions{overflow:visible;text-align:center;}
 .th-label{display:block;overflow:hidden;text-overflow:ellipsis;}
@@ -508,6 +512,10 @@ tr.row-expanded td{background:#F0F6FF!important;}
         <button type="button" id="btn-fiscal-cols" title="Escolher quais colunas exibir (preferência salva apenas neste navegador)" style="padding:6px 13px;background:#fff;color:#374151;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">👁 Colunas</button>
         <div id="fiscal-cols-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);left:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);padding:8px 4px;z-index:500;min-width:220px;max-height:320px;overflow-y:auto;font-size:12.5px;"></div>
       </span>
+      <span style="position:relative;display:inline-block;">
+        <button type="button" id="btn-fiscal-freeze" title="Escolher quais colunas ficam fixas (congeladas) ao rolar para o lado (preferência salva apenas neste navegador)" style="padding:6px 13px;background:#fff;color:#374151;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">❄ Congelar colunas</button>
+        <div id="fiscal-freeze-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);left:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);padding:8px 4px;z-index:500;min-width:220px;max-height:320px;overflow-y:auto;font-size:12.5px;"></div>
+      </span>
       <button type="button" id="btn-fiscal-autofit" title="Ajustar a largura de cada coluna ao conteúdo (como no Excel)" style="padding:6px 13px;background:#fff;color:#374151;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">📏 Ajustar largura</button>
       <span style="position:relative;display:inline-block;">
         <button type="button" id="btn-fiscal-ativ" title="Filtrar por atividade" style="padding:6px 13px;background:#fff;color:#374151;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">📋 Atividades</button>
@@ -724,10 +732,14 @@ tr.row-expanded td{background:#F0F6FF!important;}
       <span style="flex:1"></span>
       <button id="btn-recibo-add-row" title="Adicionar linha manualmente na aba ativa" style="padding:6px 13px;background:#2D6CDF;color:#fff;border:none;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">➕ Adicionar linha</button>
       <button id="btn-recibo-import-xlsx" title="Importar planilha de recibos (.xlsx)" style="padding:6px 13px;background:#fff;color:#2D6CDF;border:1px solid #2D6CDF;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">📥 Importar planilha</button>
-      <input type="text" id="recibo-search" placeholder="Buscar empresa..." style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:220px;">
+      <input type="text" id="recibo-search" placeholder="Buscar empresa, obrigação ou nome do recibo..." style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:260px;">
       <span style="position:relative;display:inline-block;">
         <button type="button" id="btn-recibo-cols" title="Escolher quais colunas exibir (preferência salva apenas neste navegador)" style="padding:6px 13px;background:#fff;color:#374151;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">👁 Colunas</button>
         <div id="recibo-cols-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);padding:8px 4px;z-index:500;min-width:180px;font-size:12.5px;"></div>
+      </span>
+      <span style="position:relative;display:inline-block;">
+        <button type="button" id="btn-recibo-freeze" title="Escolher quais colunas ficam fixas (congeladas) ao rolar para o lado (preferência salva apenas neste navegador)" style="padding:6px 13px;background:#fff;color:#374151;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">❄ Congelar colunas</button>
+        <div id="recibo-freeze-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);padding:8px 4px;z-index:500;min-width:180px;font-size:12.5px;"></div>
       </span>
     </div>
     <!-- Linha 2: filtros + anexar PDF -->
@@ -979,12 +991,12 @@ tr.row-expanded td{background:#F0F6FF!important;}
    COLUNAS FISCAL
    ========================================================= */
 const COLUMNS = [
-  {key:'flag',       label:'',           group:null,               type:'flag'},
+  {key:'flag',       label:'FLAG',       group:null,               type:'flag'},
   {key:'empresa',    label:'EMPRESA',    group:null,               type:'text', cls:'col-empresa'},
+  {key:'ativ',       label:'ATIV',       group:null,               type:'text'},
   {key:'rt',         label:'RT',         group:null,               type:'text'},
   {key:'es',         label:'ES',         group:null,               type:'text'},
   {key:'cidade',     label:'CIDADE',     group:null,               type:'text'},
-  {key:'ativ',       label:'ATIV',       group:null,               type:'text'},
   {key:'atividade',  label:'ATIVIDADES', group:null,               type:'text', cls:'col-atividade'},
   {key:'periodo',    label:'PERIODO',    group:null,               type:'month'},
   {key:'dep',        label:'DEP.',       group:null,               type:'select', options:['FISCAL','FOPAG','CONT','SOC','FINANC','PF']},
@@ -1205,7 +1217,7 @@ function startRealtimeSync(){
 
 }
 
-const state = {data:loadData(),users:loadUsers(),currentUser:null,filters:{search:'',dep:'',status:'',periodo:'',resp:''},page:1,pageSize:50,colWidths:loadCW()};
+const state = {data:loadData(),users:loadUsers(),currentUser:null,filters:{search:'',dep:'',status:'',periodo:'',resp:''},page:1,pageSize:50,colWidths:loadCW(),selectedRowId:null};
 const contState = {data:loadContData(),filters:{search:'',grupo:'',freq:'',trib:'',resp:''},page:1,pageSize:50};
 let contColFilters={};
 const timeState = {data:loadTimeData(),filters:{empresa:'',colab:'',setor:'',de:'',ate:''}};
@@ -1761,6 +1773,37 @@ document.addEventListener('click', e=>{
     dd.style.display='none';
   }
 });
+/* ── Dropdown congelar coluna (Cronograma Mensal) ── */
+function renderFiscalFreezeDropdown(){
+  const dd=document.getElementById('fiscal-freeze-dropdown');
+  dd.innerHTML=COLUMNS.map(c=>`
+    <label style="display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;border-radius:5px;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
+      <input type="checkbox" data-fiscal-freeze="${c.key}" ${frozenCols.includes(c.key)?'checked':''}>
+      <span>${esc(colDisplayName(c))}</span>
+    </label>`).join('');
+}
+document.getElementById('btn-fiscal-freeze').addEventListener('click', e=>{
+  e.stopPropagation();
+  const dd=document.getElementById('fiscal-freeze-dropdown');
+  const willOpen=dd.style.display==='none';
+  if(willOpen) renderFiscalFreezeDropdown();
+  dd.style.display=willOpen?'block':'none';
+});
+document.getElementById('fiscal-freeze-dropdown').addEventListener('change', e=>{
+  const inp=e.target.closest('[data-fiscal-freeze]');
+  if(!inp) return;
+  const key=inp.dataset.fiscalFreeze;
+  if(inp.checked){ if(!frozenCols.includes(key)) frozenCols.push(key); }
+  else { frozenCols=frozenCols.filter(k=>k!==key); }
+  saveFrozenCols(frozenCols);
+  renderTable();
+});
+document.addEventListener('click', e=>{
+  const dd=document.getElementById('fiscal-freeze-dropdown');
+  if(dd && dd.style.display!=='none' && !e.target.closest('#fiscal-freeze-dropdown') && !e.target.closest('#btn-fiscal-freeze')){
+    dd.style.display='none';
+  }
+});
 /* ── Dropdown filtrar por Atividade (Cronograma Mensal) ── */
 function updateFiscalAtivBtnState(){
   const btn=document.getElementById('btn-fiscal-ativ');
@@ -1999,6 +2042,30 @@ const LS_HIDDEN_COLS='cronograma_hidden_cols_v1';
 function loadHiddenCols(){ try{ return new Set(JSON.parse(localStorage.getItem(LS_HIDDEN_COLS)||'[]')); }catch(e){ return new Set(); } }
 function saveHiddenCols(set){ try{ localStorage.setItem(LS_HIDDEN_COLS, JSON.stringify(Array.from(set))); }catch(e){} }
 let hiddenCols=loadHiddenCols();
+/* ── COLUNA CONGELADA (fixa ao rolar) — preferência salva só neste navegador ── */
+const LS_FROZEN_COLS='cronograma_frozen_cols_v2';
+function loadFrozenCols(){
+  try{
+    const raw=localStorage.getItem(LS_FROZEN_COLS);
+    if(raw!==null) return JSON.parse(raw);
+    // Migração da versão antiga (uma única coluna congelada)
+    const old=localStorage.getItem('cronograma_freeze_col_v1');
+    return old?[old]:['empresa'];
+  }catch(e){ return ['empresa']; }
+}
+function saveFrozenCols(arr){ try{ localStorage.setItem(LS_FROZEN_COLS, JSON.stringify(arr)); }catch(e){} }
+let frozenCols=loadFrozenCols();
+// Mantém as colunas congeladas "grudadas" na tela ao rolar horizontalmente.
+// Em vez de depender de CSS position:sticky (que é instável dentro de
+// tabelas com border-collapse — foi o que causava a coluna sumir/sobrepor),
+// aplicamos um "transform: translateX" manual, atualizado a cada scroll,
+// que empurra a célula de volta para a mesma posição visual de sempre.
+function applyFrozenTransform(){
+  const wrap=document.getElementById('table-wrap'); if(!wrap) return;
+  const sl=wrap.scrollLeft;
+  const tf=sl>0?`translateX(${sl}px)`:'';
+  wrap.querySelectorAll('td.col-frozen, th.col-frozen').forEach(el=>{ el.style.transform=tf; });
+}
 function visibleColumns(){ return COLUMNS.filter(c=>!hiddenCols.has(c.key)); }
 function colDisplayName(c){ return (c.group?c.group+' — ':'')+(c.label||c.key.toUpperCase()); }
 function renderColgroup(isAdmin){let h='<colgroup>';visibleColumns().forEach(c=>{h+=`<col style="width:${colWidth(c.key)}px">`;});if(isAdmin)h+=`<col style="width:${colWidth('__actions')}px">`;return h+'</colgroup>';}
@@ -2032,7 +2099,8 @@ function renderTableHead(isAdmin){
     const activeFilter=colFilters[c.key]&&colFilters[c.key].length;
     const w=colWidth(c.key);
     const filterBtn=hasFilter?`<span class="col-filter-wrap"><button type="button" class="col-filter-btn ${activeFilter?'active':''}" data-colfilterkey="${c.key}">▼</button><div class="col-filter-dropdown" id="cfd-${c.key}"></div></span>`:'';
-    return`<th class="${c.cls||''} ${groupColClass(c.group)}" style="position:relative;width:${w}px;min-width:${w}px;max-width:${w}px;" data-colkey="${c.key}"><span class="th-label">${c.label||'—'}</span>${filterBtn}</th>`;
+    const isFrz=frozenCols.includes(c.key);
+    return`<th class="${c.cls||''} ${groupColClass(c.group)} ${isFrz?'col-frozen':''}" style="position:relative;width:${w}px;min-width:${w}px;max-width:${w}px;" data-colkey="${c.key}"><span class="th-label">${c.label||'—'}</span>${filterBtn}</th>`;
   }).join('')+(isAdmin?`<th class="col-actions" style="width:${colWidth('__actions')}px;min-width:${colWidth('__actions')}px;"></th>`:'');
   return`<thead><tr class="group-row">${gCells.join('')}</tr><tr class="head-row">${hCells}</tr></thead>`;
 }
@@ -2051,17 +2119,19 @@ function renderTable(){
   const cols=visibleColumns();
   let html='<table>'+renderColgroup(isAdmin)+renderTableHead(isAdmin)+'<tbody>';
   pageRows.forEach(row=>{
-    html+=`<tr data-rowid="${row.id}">`;
+    html+=`<tr data-rowid="${row.id}"${row.id===state.selectedRowId?' class="row-selected"':''}>`;
     cols.forEach(col=>{
       const w=colWidth(col.key);
       // For the atividade column add expand toggle
-      html+=`<td class="${col.cls||''} ${groupColClass(col.group)}" style="width:${w}px;min-width:${w}px;max-width:${w}px;">${cellHTML(row,col)}</td>`;
+      const isFrz=frozenCols.includes(col.key);
+      html+=`<td class="${col.cls||''} ${groupColClass(col.group)} ${isFrz?'col-frozen':''}" style="width:${w}px;min-width:${w}px;max-width:${w}px;">${cellHTML(row,col)}</td>`;
     });
     if(isAdmin)html+=`<td class="col-actions"><button class="del-btn" data-del="${row.id}" title="Remover">🗑</button></td>`;
     html+='</tr>';
   });
   html+='</tbody></table>';
   wrap.innerHTML=html;
+  applyFrozenTransform();
   renderPagination(rows.length,start+1,Math.min(start+state.pageSize,rows.length));
 }
 function renderPagination(total,from,to){
@@ -2080,6 +2150,7 @@ function renderAll(){renderStats();renderTable();}
 /* =========================================================
    EVENTOS DA TABELA FISCAL
    ========================================================= */
+document.getElementById('table-wrap').addEventListener('scroll', applyFrozenTransform);
 document.getElementById('table-wrap').addEventListener('change',e=>{
   const el=e.target;const id=el.dataset.id,field=el.dataset.field;if(!id||!field)return;
   const row=state.data.find(r=>r.id===id);if(!row)return;
@@ -2088,8 +2159,8 @@ document.getElementById('table-wrap').addEventListener('change',e=>{
   if(!allowed)return;
   if(field==='tempo'){el.value=normalizeTempo(el.value);}
   row[field]=el.value;saveData();
-  if(field==='tempo'){timeSyncFromFiscal(row);timeRefreshUI();}
-  else {renderTable();renderStats();}
+  timeSyncFromFiscal(row,true);timeRefreshUI();
+  renderTable();renderStats();
 });
 document.getElementById('table-wrap').addEventListener('blur',e=>{
   const el=e.target;
@@ -2115,7 +2186,7 @@ document.getElementById('table-wrap').addEventListener('click',e=>{
     const row=state.data.find(r=>r.id===id);if(!row)return;
     if(!canEditField(row,field,state.currentUser))return;
     row[field]=(norm(row[field])==='N/A')?'':'N/A';
-    saveData();renderTable();renderStats();
+    saveData();timeSyncFromFiscal(row,true);timeRefreshUI();renderTable();renderStats();
     return;
   }
   // Célula "fake-select" (ELAB./REV./POST./CONF., DEP., flag): só abre o menu
@@ -2148,7 +2219,7 @@ document.getElementById('table-wrap').addEventListener('click',e=>{
     const row=state.data.find(r=>r.id===id);if(!row)return;
     if(!canEditField(row,field,state.currentUser))return;
     row[field]=(norm(row[field])===val)?'':val;
-    saveData();renderTable();renderStats();return;
+    saveData();timeSyncFromFiscal(row,true);timeRefreshUI();renderTable();renderStats();return;
   }
   if(e.target.dataset&&e.target.dataset.del){
     const id=e.target.dataset.del;
@@ -2157,6 +2228,18 @@ document.getElementById('table-wrap').addEventListener('click',e=>{
     saveData();buildFilterOptions();renderAll();return;
   }
   // (expand e modal de detalhe removidos)
+});
+// Seleção de linha (destaque azul) — clique em qualquer parte "neutra" da
+// linha (fora de inputs/selects/botões/menus) marca/desmarca a linha como
+// selecionada, para ajudar a não se perder ao rolar a tabela.
+document.getElementById('table-wrap').addEventListener('click',e=>{
+  if(e.target.closest('input,select,button,.btn-na-toggle,.cell-fake-select,.status-btn,.cell-month-display,.col-filter-wrap'))return;
+  const tr=e.target.closest('tr[data-rowid]');
+  if(!tr)return;
+  const wasSelected=tr.classList.contains('row-selected');
+  document.querySelectorAll('#table-wrap tr.row-selected').forEach(el=>el.classList.remove('row-selected'));
+  if(wasSelected){ state.selectedRowId=null; }
+  else{ tr.classList.add('row-selected'); state.selectedRowId=tr.dataset.rowid; }
 });
 
 /* =========================================================
@@ -2202,6 +2285,7 @@ function openCellFakeMenu(cellEl){
       ev.stopPropagation();
       row[field]=opt.value;
       saveData();
+      timeSyncFromFiscal(row,true);timeRefreshUI();
       closeCellFakeMenu();
       renderTable();renderStats();
       markCellSelection();
@@ -2673,7 +2757,7 @@ function openDetailModal(row){
     <div class="dm-grid">
       ${fld('empresa','Empresa','empresa-combo',['',...empresasDoCronograma()],true,false)}
       ${fld('atividade','Atividade','text',null,true,false)}
-      ${fld('rt','RT')} ${fld('es','Estado')} ${fld('cidade','Cidade')} ${fld('ativ','ATIV')}
+      ${fld('ativ','ATIV')} ${fld('es','Estado')} ${fld('cidade','Cidade')} ${fld('rt','RT')}
       ${fld('dep','Departamento','select',['','FISCAL','FOPAG','CONT','SOC','FINANC','PF'],false,false)}
       ${fld('periodo','Período','month',null,false,true)}
       ${fld('flag','Flag','select',['F','V'],false,false)}
@@ -2729,7 +2813,7 @@ function openDetailModal(row){
       const key=btn.dataset.dmnakey;
       if(!canEditField(r,key,state.currentUser))return;
       r[key]=(norm(r[key])==='N/A')?'':'N/A';
-      saveData();renderAll();
+      saveData();timeSyncFromFiscal(r,true);timeRefreshUI();renderAll();
       refreshDetailBadges();
       openDetailModal(r);
     });
@@ -2742,11 +2826,31 @@ function applyDetailChange(el){
   let val=el.value;
   if(el.type==='month'&&val) val=val+'-01';
   r[el.dataset.dmkey]=val;
+  // Ao selecionar/digitar a EMPRESA, preenche automaticamente RT, Estado,
+  // Cidade e ATIV com base em outra atividade já existente da mesma empresa
+  // na planilha (esses dados costumam ser os mesmos para todas as
+  // atividades de uma empresa) — só preenche os campos que ainda estiverem
+  // vazios, sem sobrescrever algo que já foi digitado manualmente.
+  let refreshFields=false;
+  if(el.dataset.dmkey==='empresa'&&val){
+    const AUTOFILL_KEYS=['rt','es','cidade','ativ'];
+    if(AUTOFILL_KEYS.some(k=>!r[k])){
+      const match=state.data.find(x=>x.id!==r.id&&norm(x.empresa)===norm(val)&&AUTOFILL_KEYS.some(k=>x[k]));
+      if(match){
+        AUTOFILL_KEYS.forEach(k=>{ if(!r[k]&&match[k]){ r[k]=match[k]; refreshFields=true; } });
+      }
+    }
+  }
   saveData();renderAll();
   document.getElementById('detail-title').textContent=(r.empresa||'Nova atividade')+' — '+fmtMonthYear(r.periodo);
   refreshDetailBadges();
-  // Sync tempo to TIME module
-  if(el.dataset.dmkey==='tempo') timeSyncFromFiscal(r);
+  // Sync com o TIME: tanto ao preencher TEMPO quanto ao marcar qualquer etapa
+  // (ELAB./REV./POST./CONF.) como FEITO/N/A.
+  timeSyncFromFiscal(r,true);timeRefreshUI();
+  // Reabre o modal pra os campos RT/Estado/Cidade/ATIV recém-preenchidos
+  // aparecerem na tela (eles não atualizam sozinhos, já que são inputs
+  // renderizados antes do preenchimento automático).
+  if(refreshFields) openDetailModal(r);
 }
 function refreshDetailBadges(){
   const r=state.data.find(x=>x.id===__detailRowId);if(!r)return;
@@ -3444,12 +3548,29 @@ function normalizeTempo(v){
 }
 
 // Sync one fiscal row → time entry (upsert or remove)
-function timeSyncFromFiscal(row){
+// interactive=true: chamado a partir de uma ação explícita do usuário (marcar
+// FEITO/N/A numa etapa) — nesse caso cria/mantém o lançamento no TIME mesmo
+// sem TEMPO preenchido ainda. interactive=false (padrão): usado em
+// sincronizações em massa (troca de aba, importação, colar em várias
+// células). Nesse modo, o código NUNCA cria um lançamento novo só por causa
+// de um status FEITO/N/A antigo (senão, toda vez que o usuário abrisse o
+// TIME, todas as atividades antigas já marcadas como feitas — potencialmente
+// centenas/milhares, de meses passados — seriam recriadas de uma vez,
+// travando a tela). Mas se o lançamento JÁ EXISTE (foi criado antes por uma
+// ação interativa), o modo em massa continua atualizando/preservando ele —
+// ele só é removido se a atividade deixar de ter TEMPO e deixar de estar
+// marcada como feita em qualquer etapa.
+function timeSyncFromFiscal(row, interactive){
   const existingIdx=timeState.data.findIndex(t=>t.srcId===row.id&&t.srcType==='fiscal');
-  if(!row.tempo){
+  const anyDone=STATUS_FIELDS.some(k=>effectiveStatus(row,k)==='FEITO');
+  if(!row.tempo&&!anyDone){
     if(existingIdx>=0){timeState.data.splice(existingIdx,1);saveTimeData();}
     return;
   }
+  // Sem TEMPO, sem lançamento existente, e não foi uma ação interativa agora
+  // (ou seja, é uma passada em massa vendo uma atividade antiga já feita há
+  // tempos): não cria um lançamento novo — só evita apagar o que já existe.
+  if(!row.tempo&&existingIdx<0&&!interactive) return;
   // A data do lançamento no TIME deve refletir quando o tempo foi de fato
   // preenchido, não o período (mês) da atividade — usar "periodo" travava
   // sempre no dia 01 do mês. Mantém a data já existente do lançamento (se
@@ -5309,6 +5430,62 @@ tryRestoreSession();
     {key:'acoes',       label:'Ações'}
   ];
   const RECIBO_COLS_KEY='recibo_hidden_cols_v1';
+  /* ── COLUNAS CONGELADAS (fixas ao rolar) — preferência salva só neste navegador ── */
+  const RECIBO_FROZEN_KEY='recibo_frozen_cols_v2';
+  function reciboGetFrozenCols(){
+    try{
+      const raw=localStorage.getItem(RECIBO_FROZEN_KEY);
+      if(raw!==null) return JSON.parse(raw);
+      const old=localStorage.getItem('recibo_freeze_col_v1'); // migração da versão antiga
+      return old?[old]:['empresa'];
+    }catch(e){ return ['empresa']; }
+  }
+  function reciboSetFrozenCols(arr){
+    try{ localStorage.setItem(RECIBO_FROZEN_KEY, JSON.stringify(arr)); }catch(e){}
+  }
+  function reciboRenderFreezeDropdown(){
+    const dd=document.getElementById('recibo-freeze-dropdown');
+    const cur=reciboGetFrozenCols();
+    dd.innerHTML=RECIBO_COLS.filter(c=>c.key!=='acoes').map(c=>`
+      <label style="display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;border-radius:5px;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
+        <input type="checkbox" data-recibo-freeze="${c.key}" ${cur.includes(c.key)?'checked':''}>
+        <span>${c.label}</span>
+      </label>`).join('');
+  }
+  document.getElementById('btn-recibo-freeze').addEventListener('click', e=>{
+    e.stopPropagation();
+    const dd=document.getElementById('recibo-freeze-dropdown');
+    const willOpen=dd.style.display==='none';
+    if(willOpen) reciboRenderFreezeDropdown();
+    dd.style.display=willOpen?'block':'none';
+  });
+  document.getElementById('recibo-freeze-dropdown').addEventListener('change', e=>{
+    const inp=e.target.closest('[data-recibo-freeze]');
+    if(!inp) return;
+    let cur=reciboGetFrozenCols();
+    const key=inp.dataset.reciboFreeze;
+    if(inp.checked){ if(!cur.includes(key)) cur.push(key); }
+    else { cur=cur.filter(k=>k!==key); }
+    reciboSetFrozenCols(cur);
+    if(typeof window.reciboRenderAll==='function') window.reciboRenderAll();
+  });
+  document.addEventListener('click', e=>{
+    const dd=document.getElementById('recibo-freeze-dropdown');
+    if(dd && dd.style.display!=='none' && !e.target.closest('#recibo-freeze-dropdown') && !e.target.closest('#btn-recibo-freeze')){
+      dd.style.display='none';
+    }
+  });
+  // Mantém as colunas congeladas grudadas na tela ao rolar horizontalmente.
+  // Usamos "transform: translateX" atualizado a cada scroll em vez de CSS
+  // position:sticky, que é instável dentro de tabelas com border-collapse
+  // (era o que fazia o cabeçalho da coluna sumir/sobrepor outra).
+  function reciboApplyFrozenTransform(){
+    const wrap=document.getElementById('recibo-wrap'); if(!wrap) return;
+    const sl=wrap.scrollLeft;
+    const tf=sl>0?`translateX(${sl}px)`:'';
+    wrap.querySelectorAll('td.recibo-frozen-col, th.recibo-frozen-col').forEach(el=>{ el.style.transform=tf; });
+  }
+  document.getElementById('recibo-wrap').addEventListener('scroll', reciboApplyFrozenTransform);
   function reciboGetHiddenCols(){
     try{ return JSON.parse(localStorage.getItem(RECIBO_COLS_KEY)||'[]'); }catch(e){ return []; }
   }
@@ -5427,7 +5604,12 @@ tryRestoreSession();
 
     // Aplicar filtros externos (busca + selects toolbar) + filtros de coluna
     let registros=todosRegistros.filter(r=>{
-      if(searchVal && !norm(r.empresa).includes(searchVal) && !norm(r.obrigacao||'').includes(searchVal)) return false;
+      if(searchVal
+        && !norm(r.empresa).includes(searchVal)
+        && !norm(r.obrigacao||'').includes(searchVal)
+        && !norm(r.pdf_name||'').includes(searchVal)
+        && !norm(r.recibo_path||'').includes(searchVal)
+      ) return false;
       if(statusFil==='ok'      && r.status!=='ok') return false;
       if(statusFil==='n/a'     && r.status!=='n/a') return false;
       if(statusFil==='pendente'&& r.status!=='pendente' && r.status) return false;
@@ -5454,6 +5636,7 @@ tryRestoreSession();
     if(!registros.length){
       // Still render thead so filters remain visible
       const TH='position:sticky;top:0;background:#F0F3F7;color:#1a2340;font-weight:700;border-bottom:1px solid #e0e6f0;border-right:1px solid #e0e6f0;padding:6px 10px;white-space:nowrap;z-index:2;font-size:12px;user-select:none;';
+      const frozen0=reciboGetFrozenCols();
       function mkTh(key,label,minW,noFilter){
         const vals=colVals(key);
         const cur=reciboColFilters[key]||[];
@@ -5464,17 +5647,18 @@ tryRestoreSession();
           `<div class="col-filter-actions"><span data-rcall="${key}">Marcar todos</span><span data-rcnone="${key}">Limpar</span></div>`+
           vals.map(v=>`<label class="col-filter-item"><input type="checkbox" data-rck="${key}" data-rcv="${v.replace(/"/g,'&quot;')}" ${cur.includes(v)?'checked':''}><span>${v}</span></label>`).join('')+
           `</div></span>`;
-        return `<th data-rcolkey="${key}" style="${TH}min-width:${minW};position:relative;">${label}${filterHtml}</th>`;
+        return `<th data-rcolkey="${key}" class="${frozen0.includes(key)?'recibo-frozen-col':''}" style="${TH}min-width:${minW};position:relative;">${label}${filterHtml}</th>`;
       }
-      thead.innerHTML=`<tr>${mkTh('empresa','Empresa','160px')}${mkTh('obrigacao','Obrigação','130px')}${mkTh('periodo','Período','70px')}${mkTh('responsavel','Responsável','80px')}${mkTh('status','Status','100px')}<th data-rcolkey="recibo" style="${TH}min-width:160px;">Recibo</th><th data-rcolkey="acoes" style="${TH}min-width:80px;cursor:default;">Ações</th></tr>`;
+      thead.innerHTML=`<tr>${mkTh('empresa','Empresa','160px')}${mkTh('obrigacao','Obrigação','130px')}${mkTh('periodo','Período','70px')}${mkTh('responsavel','Responsável','80px')}${mkTh('status','Status','100px')}<th data-rcolkey="recibo" class="${frozen0.includes('recibo')?'recibo-frozen-col':''}" style="${TH}min-width:160px;">Recibo</th><th data-rcolkey="acoes" style="${TH}min-width:80px;cursor:default;">Ações</th></tr>`;
       tbody.innerHTML='';
-      empty.style.display='block'; reciboApplyColVisibility(); return;
+      empty.style.display='block'; reciboApplyColVisibility(); reciboApplyFrozenTransform(); return;
     }
     empty.style.display='none';
 
     const TH='position:sticky;top:0;background:#F0F3F7;color:#1a2340;font-weight:700;border-bottom:1px solid #e0e6f0;border-right:1px solid #e0e6f0;padding:6px 10px;white-space:nowrap;z-index:2;font-size:12px;user-select:none;';
     const TD='border-bottom:1px solid #e0e6f0;border-right:1px solid #e0e6f0;padding:5px 8px;white-space:nowrap;vertical-align:middle;font-size:12px;overflow:hidden;text-overflow:ellipsis;';
 
+    const frozen=reciboGetFrozenCols();
     function mkTh(key,label,minW,noFilter){
       const vals=colVals(key);
       const cur=reciboColFilters[key]||[];
@@ -5485,7 +5669,7 @@ tryRestoreSession();
         `<div class="col-filter-actions"><span data-rcall="${key}">Marcar todos</span><span data-rcnone="${key}">Limpar</span></div>`+
         vals.map(v=>`<label class="col-filter-item"><input type="checkbox" data-rck="${key}" data-rcv="${v.replace(/"/g,'&quot;')}" ${cur.includes(v)?'checked':''}><span>${v}</span></label>`).join('')+
         `</div></span>`;
-      return `<th data-rcolkey="${key}" style="${TH}min-width:${minW};position:relative;">${label}${filterHtml}</th>`;
+      return `<th data-rcolkey="${key}" class="${frozen.includes(key)?'recibo-frozen-col':''}" style="${TH}min-width:${minW};position:relative;">${label}${filterHtml}</th>`;
     }
 
     thead.innerHTML=`<tr>
@@ -5494,7 +5678,7 @@ tryRestoreSession();
       ${mkTh('periodo','Período','70px')}
       ${mkTh('responsavel','Responsável','80px')}
       ${mkTh('status','Status','100px')}
-      <th data-rcolkey="recibo" style="${TH}min-width:160px;">Recibo</th>
+      <th data-rcolkey="recibo" class="${frozen.includes('recibo')?'recibo-frozen-col':''}" style="${TH}min-width:160px;">Recibo</th>
       <th data-rcolkey="acoes" style="${TH}min-width:80px;cursor:default;">Ações</th>
     </tr>`;
 
@@ -5515,13 +5699,14 @@ tryRestoreSession();
         ?`<span style="color:#6b7280;font-size:11px;" title="${r.recibo_path}">📁 ${r.recibo_path.split('\\').pop().slice(0,28)}</span>`
         :'<span style="color:#d1d5db;font-size:11px;">—</span>';
 
+      const frz=k=>frozen.includes(k)?' recibo-frozen-col':'';
       return `<tr onmouseover="this.style.background='#f5f8ff'" onmouseout="this.style.background=''">
-        <td style="${TD}font-weight:600;max-width:200px;">${r.empresa}</td>
-        <td style="${TD}max-width:180px;">${r.obrigacao||r._aba||'—'}</td>
-        <td style="${TD}color:#555;">${r.periodo||'—'}</td>
-        <td style="${TD}">${r.responsavel||'—'}</td>
-        <td style="${TD}">${badge}</td>
-        <td style="${TD}max-width:200px;">${reciboBadge}</td>
+        <td data-rcolkey="empresa" class="${frz('empresa')}" style="${TD}font-weight:600;max-width:200px;">${r.empresa}</td>
+        <td data-rcolkey="obrigacao" class="${frz('obrigacao')}" style="${TD}max-width:180px;">${r.obrigacao||r._aba||'—'}</td>
+        <td data-rcolkey="periodo" class="${frz('periodo')}" style="${TD}color:#555;">${r.periodo||'—'}</td>
+        <td data-rcolkey="responsavel" class="${frz('responsavel')}" style="${TD}">${r.responsavel||'—'}</td>
+        <td data-rcolkey="status" class="${frz('status')}" style="${TD}">${badge}</td>
+        <td data-rcolkey="recibo" class="${frz('recibo')}" style="${TD}max-width:200px;">${reciboBadge}</td>
         <td style="${TD}white-space:nowrap;">
           <button data-attach="${i}" title="Anexar PDF" style="padding:3px 9px;font-size:11px;border:1px solid #2563eb;border-radius:5px;background:#fff;color:#2563eb;cursor:pointer;">📎</button>
           ${r.status!=='ok'?`<button data-ok="${i}" title="Marcar OK" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #059669;border-radius:5px;background:#fff;color:#059669;cursor:pointer;">✓</button>`:`<button data-unok="${i}" title="Voltar para pendente" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #92400e;border-radius:5px;background:#fff;color:#92400e;cursor:pointer;">↩</button>`}
@@ -5582,6 +5767,7 @@ tryRestoreSession();
       });
     });
     reciboApplyColVisibility();
+    reciboApplyFrozenTransform();
   }
 
   /* ── INPUTS E LISTENERS ──────────────────────────────── */
