@@ -3548,29 +3548,19 @@ function normalizeTempo(v){
 }
 
 // Sync one fiscal row → time entry (upsert or remove)
-// interactive=true: chamado a partir de uma ação explícita do usuário (marcar
-// FEITO/N/A numa etapa) — nesse caso cria/mantém o lançamento no TIME mesmo
-// sem TEMPO preenchido ainda. interactive=false (padrão): usado em
-// sincronizações em massa (troca de aba, importação, colar em várias
-// células). Nesse modo, o código NUNCA cria um lançamento novo só por causa
-// de um status FEITO/N/A antigo (senão, toda vez que o usuário abrisse o
-// TIME, todas as atividades antigas já marcadas como feitas — potencialmente
-// centenas/milhares, de meses passados — seriam recriadas de uma vez,
-// travando a tela). Mas se o lançamento JÁ EXISTE (foi criado antes por uma
-// ação interativa), o modo em massa continua atualizando/preservando ele —
-// ele só é removido se a atividade deixar de ter TEMPO e deixar de estar
-// marcada como feita em qualquer etapa.
+// REGRA ÚNICA: o lançamento no TIME é criado/mantido SOMENTE quando a coluna
+// TEMPO da atividade está preenchida. Marcar FEITO/N/A nas etapas
+// (ELAB./REV./POST./CONF.) NÃO cria mais lançamento no TIME — o gatilho é
+// exclusivamente o preenchimento do TEMPO. Se o TEMPO for apagado, o
+// lançamento automático correspondente é removido do TIME.
+// (o parâmetro "interactive" foi mantido só por compatibilidade com os
+// pontos de chamada existentes — ele não altera mais o comportamento)
 function timeSyncFromFiscal(row, interactive){
   const existingIdx=timeState.data.findIndex(t=>t.srcId===row.id&&t.srcType==='fiscal');
-  const anyDone=STATUS_FIELDS.some(k=>effectiveStatus(row,k)==='FEITO');
-  if(!row.tempo&&!anyDone){
+  if(!row.tempo){
     if(existingIdx>=0){timeState.data.splice(existingIdx,1);saveTimeData();}
     return;
   }
-  // Sem TEMPO, sem lançamento existente, e não foi uma ação interativa agora
-  // (ou seja, é uma passada em massa vendo uma atividade antiga já feita há
-  // tempos): não cria um lançamento novo — só evita apagar o que já existe.
-  if(!row.tempo&&existingIdx<0&&!interactive) return;
   // A data do lançamento no TIME deve refletir quando o tempo foi de fato
   // preenchido, não o período (mês) da atividade — usar "periodo" travava
   // sempre no dia 01 do mês. Mantém a data já existente do lançamento (se
@@ -3584,6 +3574,10 @@ function timeSyncFromFiscal(row, interactive){
     descricao:row.atividade||'',
     tempo:row.tempo||'',
     data:existingIdx>=0?(timeState.data[existingIdx].data||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10),
+    // Registra QUEM preencheu o tempo (usuário logado). Preserva o criador
+    // original em atualizações; só define no primeiro preenchimento (ou em
+    // lançamentos antigos que ainda não tinham esse campo).
+    criadoPor:existingIdx>=0?(timeState.data[existingIdx].criadoPor||(state.currentUser?state.currentUser.username:'')):(state.currentUser?state.currentUser.username:''),
     origem:'auto-fiscal'
   };
   if(existingIdx>=0){timeState.data[existingIdx]=entry;}
@@ -3608,6 +3602,7 @@ function timeSyncFromCont(row){
     descricao:'Contabilidade — '+(row.freq||row.trib||''),
     tempo:row.tempo||'',
     data:existingIdx>=0?(timeState.data[existingIdx].data||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10),
+    criadoPor:existingIdx>=0?(timeState.data[existingIdx].criadoPor||(state.currentUser?state.currentUser.username:'')):(state.currentUser?state.currentUser.username:''),
     origem:'auto-cont'
   };
   if(existingIdx>=0){timeState.data[existingIdx]=entry;}
@@ -3620,12 +3615,17 @@ function timeGetFiltered(){
   const u=state.currentUser;
   const isAdmin=u&&u.role==='admin';
   return timeState.data.filter(r=>{
-    // colaborador só vê seus próprios lançamentos
+    // colaborador vê: (1) lançamentos onde ELE é o colaborador, e
+    // (2) TODOS os lançamentos que ELE MESMO preencheu (criadoPor), mesmo
+    // que a atividade seja de outra pessoa — assim quem lança tempo numa
+    // tarefa que não é dele continua vendo o que preencheu.
     if(!isAdmin&&u){
       const colab=norm(r.colaborador||'');
       const uname=norm(u.username||'');
       const unome=norm(u.nome||'');
-      if(!(colab===uname||colab===unome||colab.startsWith(uname)||uname.startsWith(colab)||colab.startsWith(unome)||unome.startsWith(colab)))return false;
+      const isOwn=colab===uname||colab===unome||colab.startsWith(uname)||uname.startsWith(colab)||colab.startsWith(unome)||unome.startsWith(colab);
+      const filledByMe=norm(r.criadoPor||'')===uname;
+      if(!isOwn&&!filledByMe)return false;
     }
     if(f.empresa&&!(r.empresa||'').toLowerCase().includes(f.empresa))return false;
     if(f.colab&&!(r.colaborador||'').toLowerCase().includes(f.colab))return false;
@@ -3675,6 +3675,10 @@ function timeRenderSummary(){
 function timeRenderTable(){
   const rows=timeGetFiltered();
   const tbody=document.getElementById('time-tbody');
+  // Admin pode retroagir a data do lançamento; colaborador continua limitado
+  // a hoje/futuro (o atributo "min" só é aplicado para não-admin).
+  const __tAdmin=state.currentUser&&state.currentUser.role==='admin';
+  const __tMinAttr=__tAdmin?'':`min="${new Date().toISOString().slice(0,10)}"`;
   if(!rows.length){tbody.innerHTML=`<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-soft);">Nenhum lançamento encontrado.</td></tr>`;return;}
   tbody.innerHTML=rows.map(r=>`
     <tr>
@@ -3687,7 +3691,7 @@ function timeRenderTable(){
       </td>
       <td><input class="time-inp" data-tid="${r.id}" data-tf="descricao" value="${esc(r.descricao||'')}" style="min-width:220px;"></td>
       <td><input class="time-inp" data-tid="${r.id}" data-tf="tempo" value="${esc(r.tempo||'')}" style="width:80px;" placeholder="00:50"></td>
-      <td><input type="date" class="time-inp" data-tid="${r.id}" data-tf="data" value="${r.data&&r.data.length===10?r.data:(r.data?r.data.slice(0,10):'')}" min="${new Date().toISOString().slice(0,10)}" style="width:120px;"></td>
+      <td><input type="date" class="time-inp" data-tid="${r.id}" data-tf="data" value="${r.data&&r.data.length===10?r.data:(r.data?r.data.slice(0,10):'')}" ${__tMinAttr} style="width:120px;"></td>
       <td style="text-align:center;">
         <span class="${r.srcType?'time-source-auto':'time-source-manual'}">${r.srcType?'Auto':'Manual'}</span>
       </td>
@@ -3727,8 +3731,10 @@ document.getElementById('time-tbody').addEventListener('change',e=>{
   const el=e.target;const id=el.dataset.tid,field=el.dataset.tf;if(!id||!field)return;
   const r=timeState.data.find(x=>x.id===id);if(!r)return;
   if(field==='data'){
+    const isAdmin=state.currentUser&&state.currentUser.role==='admin';
     const todayStr=new Date().toISOString().slice(0,10);
-    if(el.value&&el.value<todayStr){alert('Não é possível lançar tempo em datas anteriores a hoje. Selecione a data de hoje ou uma data futura.');el.value=r.data||todayStr;return;}
+    // Admin pode alterar para uma data retroativa; colaborador não.
+    if(!isAdmin&&el.value&&el.value<todayStr){alert('Não é possível lançar tempo em datas anteriores a hoje. Selecione a data de hoje ou uma data futura.');el.value=r.data||todayStr;return;}
   }
   if(field==='tempo'){r[field]=normalizeTempo(el.value);}else{r[field]=el.value;}
   // If this is a linked row and tempo changed, update source
@@ -3798,7 +3804,12 @@ document.getElementById('btn-time-add').addEventListener('click',()=>{
   document.getElementById('tm-desc').value='';
   document.getElementById('tm-tempo').value='';
   document.getElementById('tm-data').value=new Date().toISOString().slice(0,10);
-  document.getElementById('tm-data').min=new Date().toISOString().slice(0,10);
+  // Admin pode escolher data retroativa no lançamento manual
+  if(state.currentUser&&state.currentUser.role==='admin'){
+    document.getElementById('tm-data').removeAttribute('min');
+  } else {
+    document.getElementById('tm-data').min=new Date().toISOString().slice(0,10);
+  }
   openModal('modal-time-add');
 });
 document.getElementById('tm-tempo').addEventListener('blur',()=>{
@@ -3814,8 +3825,8 @@ document.getElementById('btn-time-save').addEventListener('click',()=>{
   const tempo=normalizeTempo(document.getElementById('tm-tempo').value.trim());
   const data=document.getElementById('tm-data').value;
   if(!empresa||!tempo){alert('Preencha ao menos Empresa e Tempo gasto.');return;}
-  {const todayStr=new Date().toISOString().slice(0,10);if(data&&data<todayStr){alert('Não é possível lançar tempo em datas anteriores a hoje. Selecione a data de hoje ou uma data futura.');return;}}
-  const entry={id:__timeEditId||timeUid(),empresa,colaborador:colab,setor,descricao:desc,tempo,data,srcType:null,srcId:null,origem:'manual'};
+  {const isAdmin=state.currentUser&&state.currentUser.role==='admin';const todayStr=new Date().toISOString().slice(0,10);if(!isAdmin&&data&&data<todayStr){alert('Não é possível lançar tempo em datas anteriores a hoje. Selecione a data de hoje ou uma data futura.');return;}}
+  const entry={id:__timeEditId||timeUid(),empresa,colaborador:colab,setor,descricao:desc,tempo,data,srcType:null,srcId:null,criadoPor:(state.currentUser?state.currentUser.username:''),origem:'manual'};
   if(__timeEditId){const idx=timeState.data.findIndex(r=>r.id===__timeEditId);if(idx>=0)timeState.data[idx]=entry;}
   else timeState.data.push(entry);
   saveTimeData();closeModal('modal-time-add');timeRenderAll();
@@ -4164,12 +4175,14 @@ function relatorioGetFiltered(){
   const u=state.currentUser;
   const isAdmin=u&&u.role==='admin';
   return timeState.data.filter(r=>{
-    // colaborador só vê seus próprios lançamentos
+    // colaborador vê os lançamentos dele OU os que ele mesmo preencheu
     if(!isAdmin&&u){
       const colab=norm(r.colaborador||'');
       const uname=norm(u.username||'');
       const unome=norm(u.nome||'');
-      if(!(colab===uname||colab===unome||colab.startsWith(uname)||uname.startsWith(colab)||colab.startsWith(unome)||unome.startsWith(colab)))return false;
+      const isOwn=colab===uname||colab===unome||colab.startsWith(uname)||uname.startsWith(colab)||colab.startsWith(unome)||unome.startsWith(colab);
+      const filledByMe=norm(r.criadoPor||'')===uname;
+      if(!isOwn&&!filledByMe)return false;
     }
     if(f.empresa&&!(r.empresa||'').toLowerCase().includes(f.empresa))return false;
     if(f.colab&&!(r.colaborador||'').toLowerCase().includes(f.colab))return false;
