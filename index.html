@@ -1272,6 +1272,16 @@ function isoToDateSafe(iso){
   const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]));
   return isNaN(d.getTime())?null:d;
 }
+function isoToExcelSerial(iso){
+  // Converte "YYYY-MM-DD" direto para o número serial do Excel, sem passar por
+  // objeto Date em horário local. Isso corrige o bug do export em que todas as
+  // datas saíam com 1 dia a menos (fuso UTC-3): a biblioteca convertia o Date
+  // local para serial com um resíduo de ~28s, e "14/07" virava "13/07 23:59".
+  if(!iso) return null;
+  const m=String(iso).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m) return null;
+  return Math.round((Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]))-Date.UTC(1899,11,30))/864e5);
+}
 function effectiveStatus(row,statusKey){
   const m=STAGE_BY_STATUSKEY[statusKey];
   if(!m) return 'PENDENTE';
@@ -1433,10 +1443,15 @@ function exportWorkbook(){
   // Linha 2: headers
   const headerRow=COLUMNS.map(c=>c.label);
   const aoa=[titleRow,groupRow,headerRow];
-  state.data.forEach(row=>{aoa.push(COLUMNS.map(c=>{
+  // Exporta EXATAMENTE o que está no cronograma: mesmas linhas visíveis
+  // (respeitando filtros e a ordem congelada da tela), mesmos status calculados
+  // (effectiveStatus, idêntico ao badge exibido) e mesmas datas (via serial
+  // Excel, sem deslocamento de fuso horário).
+  const exportRows=getFilteredRows();
+  exportRows.forEach(row=>{aoa.push(COLUMNS.map(c=>{
     let v=row[c.key];
     if(c.type==='status') v=effectiveStatus(row,c.key);
-    if((c.type==='date'||c.type==='month')&&isISO(v))return new Date(v+'T00:00:00');
+    if(c.type==='date'||c.type==='month'){const s=isoToExcelSerial(v);if(s!=null)return s;}
     return v;
   }));});
 
