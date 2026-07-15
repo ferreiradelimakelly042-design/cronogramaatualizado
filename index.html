@@ -14,14 +14,20 @@
 // ============================================================
 window.FB_CONFIG = null; // será preenchido pelo painel ou pelo código abaixo
 
-// OPCIONAL: cole sua config aqui para não precisar digitar toda vez:
+// ============================================================
+// ⚠️ NOVO PROJETO FIREBASE — cole aqui a config do projeto novo
+// (Console Firebase → ⚙️ Configurações do projeto → Seus apps)
+// Com a config preenchida aqui, TODA a equipe passa a usar o
+// projeto novo automaticamente, sem digitar nada no painel.
+// Descomente as linhas abaixo (remova as //) e preencha:
+// ============================================================
 // window.FB_CONFIG = {
 //   apiKey: "...",
-//   authDomain: "...",
+//   authDomain: "SEU-PROJETO.firebaseapp.com",
 //   databaseURL: "https://SEU-PROJETO-default-rtdb.firebaseio.com",
-//   projectId: "...",
-//   storageBucket: "...",
-//   messagingSenderId: "...",
+//   projectId: "SEU-PROJETO",
+//   storageBucket: "SEU-PROJETO.appspot.com",
+//   messagingSenderId: "",
 //   appId: "..."
 // };
 
@@ -39,14 +45,16 @@ function fbInit(config) {
   } catch(e) { console.error('Firebase init error:', e); return false; }
 }
 
-// Tenta restaurar config salva
+// Inicializa o Firebase.
+// PRIORIDADE: a config embutida no código (acima) vence a config salva no
+// navegador. Isso garante que, ao trocar de projeto, toda a equipe migre
+// junto — sem ficar presa ao projeto antigo gravado no localStorage.
 (function(){
+  if (window.FB_CONFIG && window.FB_CONFIG.databaseURL) { fbInit(window.FB_CONFIG); return; }
   try {
     const saved = JSON.parse(localStorage.getItem('fb_config_v1'));
     if (saved && saved.databaseURL) { fbInit(saved); }
   } catch(e) {}
-  // Se já havia config inline, usa ela
-  if (window.FB_CONFIG && !window._fbDb) { fbInit(window.FB_CONFIG); }
 })();
 
 // ---- Helpers Firebase async ----
@@ -1072,6 +1080,73 @@ const LS_TIME='cronograma_time_v1';
 function arrToObj(arr){ const o={}; arr.forEach((v,i)=>o[i]=v); return o; }
 function objToArr(obj){ if(!obj)return []; if(Array.isArray(obj))return obj; return Object.keys(obj).sort((a,b)=>Number(a)-Number(b)).map(k=>obj[k]); }
 
+/* =========================================================
+   SYNC INCREMENTAL (economia de cota do Firebase)
+   ---------------------------------------------------------
+   ANTES: cada edição fazia fbSet() do nó INTEIRO. O Realtime
+   Database então retransmitia o nó completo para TODOS os
+   clientes conectados — com a equipe toda online, isso
+   multiplicava cada edição por megabytes e estourava a cota
+   mensal de download (10 GB) em poucas semanas.
+
+   AGORA: guardamos um snapshot do último estado sincronizado
+   e, a cada save, enviamos via update() APENAS os índices que
+   mudaram. O Firebase retransmite só o delta (poucos bytes).
+   Um debounce de 600ms agrupa edições em sequência (ex.:
+   colar várias células de uma vez).
+   ========================================================= */
+window._fbLastSync = {};   // path → JSON por índice do último estado conhecido
+window._fbSyncTimers = {}; // path → timer de debounce
+window._fbSyncPending = {};// path → último array pendente de envio
+
+function _fbSnapshotIdx(obj){
+  const m = {};
+  Object.keys(obj||{}).forEach(k=>{ m[k] = JSON.stringify(obj[k]); });
+  return m;
+}
+
+function fbSyncArray(path, arr){
+  if(!window._fbDb) return;
+  window._fbSyncPending[path] = arr.slice(); // cópia rasa do estado mais recente
+  if(window._fbSyncTimers[path]) clearTimeout(window._fbSyncTimers[path]);
+  window._fbSyncTimers[path] = setTimeout(()=>{
+    delete window._fbSyncTimers[path];
+    const pend = window._fbSyncPending[path]; delete window._fbSyncPending[path];
+    if(!pend) return;
+    const novo = pend.length ? arrToObj(pend) : {};
+    const last = window._fbLastSync[path];
+    // Sem snapshot anterior → envio completo (1ª vez na sessão)
+    if(!last){
+      fbSet(path, novo)
+        .then(()=>{ window._fbLastSync[path] = _fbSnapshotIdx(novo); })
+        .catch(e=>console.warn('FB syncFull '+path+':', e));
+      return;
+    }
+    // Diff por índice: envia só o que mudou; null remove índices excluídos
+    const updates = {}; let n = 0;
+    const novoIdx = _fbSnapshotIdx(novo);
+    const keys = new Set([...Object.keys(last), ...Object.keys(novoIdx)]);
+    keys.forEach(k=>{
+      if(last[k] !== novoIdx[k]){ updates[k] = (k in novo) ? novo[k] : null; ++n; }
+    });
+    if(!n) return; // nada mudou de verdade
+    fbRef(path).update(updates)
+      .then(()=>{ window._fbLastSync[path] = novoIdx; })
+      .catch(e=>{
+        console.warn('FB syncDiff '+path+' (fallback para envio completo):', e);
+        fbSet(path, novo)
+          .then(()=>{ window._fbLastSync[path] = _fbSnapshotIdx(novo); })
+          .catch(e2=>console.warn('FB syncFull '+path+':', e2));
+      });
+  }, 600);
+}
+
+// Registra o estado recebido do servidor como "último sincronizado",
+// para que o próximo diff seja calculado contra ele.
+function fbMarkSynced(path, obj){
+  window._fbLastSync[path] = _fbSnapshotIdx(obj||{});
+}
+
 // ---- FISCAL ----
 function loadData(){
   try{return JSON.parse(localStorage.getItem(LS_DATA))||[];}catch(e){return[];}
@@ -1080,6 +1155,7 @@ async function loadDataFb(){
   try{
     if(!window._fbDb) return loadData();
     const v = await fbGet('cronograma/data');
+    fbMarkSynced('cronograma/data', v);
     const arr = objToArr(v);
     if(arr.length){ localStorage.setItem(LS_DATA,JSON.stringify(arr)); }
     return arr.length ? arr : loadData();
@@ -1088,7 +1164,7 @@ async function loadDataFb(){
 function saveData(){
   localStorage.setItem(LS_DATA,JSON.stringify(state.data));
   if(window._fbDb){
-    fbSet('cronograma/data', state.data.length ? arrToObj(state.data) : {}).catch(e=>console.warn('FB saveData:',e));
+    fbSyncArray('cronograma/data', state.data);
   }
 }
 
@@ -1105,6 +1181,7 @@ async function loadUsersFb(){
   try{
     if(!window._fbDb) return loadUsers();
     const v = await fbGet('cronograma/users');
+    fbMarkSynced('cronograma/users', v);
     const arr = objToArr(v);
     if(arr.length){ localStorage.setItem(LS_USERS,JSON.stringify(arr)); return arr; }
     return loadUsers();
@@ -1113,7 +1190,7 @@ async function loadUsersFb(){
 function saveUsers(){
   localStorage.setItem(LS_USERS,JSON.stringify(state.users));
   if(window._fbDb){
-    fbSet('cronograma/users', arrToObj(state.users)).catch(e=>console.warn('FB saveUsers:',e));
+    fbSyncArray('cronograma/users', state.users);
   }
 }
 
@@ -1127,6 +1204,7 @@ async function loadContDataFb(){
   try{
     if(!window._fbDb) return loadContData();
     const v = await fbGet('cronograma/cont');
+    fbMarkSynced('cronograma/cont', v);
     const arr = objToArr(v);
     if(arr.length){ localStorage.setItem(LS_CONT,JSON.stringify(arr)); }
     return arr.length ? arr : loadContData();
@@ -1135,7 +1213,7 @@ async function loadContDataFb(){
 function saveContData(){
   localStorage.setItem(LS_CONT,JSON.stringify(contState.data));
   if(window._fbDb){
-    fbSet('cronograma/cont', contState.data.length ? arrToObj(contState.data) : {}).catch(e=>console.warn('FB saveContData:',e));
+    fbSyncArray('cronograma/cont', contState.data);
   }
 }
 
@@ -1145,6 +1223,7 @@ async function loadTimeDataFb(){
   try{
     if(!window._fbDb) return loadTimeData();
     const v = await fbGet('cronograma/time');
+    fbMarkSynced('cronograma/time', v);
     const arr = objToArr(v);
     if(arr.length){ localStorage.setItem(LS_TIME,JSON.stringify(arr)); }
     return arr.length ? arr : loadTimeData();
@@ -1153,7 +1232,7 @@ async function loadTimeDataFb(){
 function saveTimeData(){
   localStorage.setItem(LS_TIME,JSON.stringify(timeState.data));
   if(window._fbDb){
-    fbSet('cronograma/time', timeState.data.length ? arrToObj(timeState.data) : {}).catch(e=>console.warn('FB saveTimeData:',e));
+    fbSyncArray('cronograma/time', timeState.data);
   }
 }
 
@@ -1162,6 +1241,7 @@ function startRealtimeSync(){
   if(!window._fbDb) return;
 
   fbListen('cronograma/data', v=>{
+    fbMarkSynced('cronograma/data', v);
     const arr = objToArr(v);
     if(!arr.length) return;
     const localStr = JSON.stringify(state.data);
@@ -1172,6 +1252,7 @@ function startRealtimeSync(){
   });
 
   fbListen('cronograma/users', v=>{
+    fbMarkSynced('cronograma/users', v);
     const arr = objToArr(v);
     if(!arr.length) return;
     state.users = arr;
@@ -1184,6 +1265,7 @@ function startRealtimeSync(){
   });
 
   fbListen('cronograma/cont', v=>{
+    fbMarkSynced('cronograma/cont', v);
     const arr = objToArr(v);
     if(!arr.length) return;
     const localStr = JSON.stringify(contState.data);
@@ -1196,6 +1278,7 @@ function startRealtimeSync(){
   });
 
   fbListen('cronograma/time', v=>{
+    fbMarkSynced('cronograma/time', v);
     const arr = objToArr(v);
     if(!arr.length) return;
     const localStr = JSON.stringify(timeState.data);
@@ -4653,10 +4736,46 @@ tryRestoreSession();
     try{ const s=localStorage.getItem(LS_KEY); if(s) RS=JSON.parse(s); }catch(e){}
     if(!RS.abas) RS.abas={};
   }
+  /* PDFs em base64 NÃO ficam mais dentro de cronograma/recibos.
+     Cada PDF vai para cronograma/pdfs/<id> e o registro guarda só a
+     referência (pdf_ref). Assim o nó de recibos fica leve e a
+     sincronização em tempo real não retransmite megabytes de PDF a
+     cada alteração — era uma das causas do estouro da cota. */
+  function _migrarPdfsEmbutidos(){
+    if(!window._fbDb) return;
+    Object.keys(RS.abas||{}).forEach(aba=>{
+      (RS.abas[aba]||[]).forEach(reg=>{
+        if(reg && reg.pdf_data && !reg.pdf_ref){
+          const id='pdf_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+          fbSet('cronograma/pdfs/'+id, {name:reg.pdf_name||'Recibo.pdf', data:reg.pdf_data})
+            .catch(e=>console.warn('FB migrar pdf:',e));
+          reg.pdf_ref=id;
+        }
+        if(reg && reg.pdf_ref && reg.pdf_data) reg.pdf_data=null;
+      });
+    });
+  }
   function rsSave(){
+    _migrarPdfsEmbutidos();
     try{ localStorage.setItem(LS_KEY, JSON.stringify(RS)); }catch(e){}
     if(window._fbDb){
       fbSet('cronograma/recibos', RS).catch(e=>console.warn('FB rsSave:',e));
+    }
+  }
+  function temPdf(r){ return !!(r && (r.pdf_data || r.pdf_ref)); }
+  function abrirPdf(r){
+    if(r.pdf_data){
+      const w=window.open();
+      w.document.write('<iframe src="'+r.pdf_data+'" style="width:100%;height:100%;border:none;"></iframe>');
+      return;
+    }
+    if(r.pdf_ref && window._fbDb){
+      const w=window.open();
+      w.document.write('<p style="font-family:sans-serif;padding:20px;">Carregando PDF…</p>');
+      fbGet('cronograma/pdfs/'+r.pdf_ref).then(p=>{
+        if(p && p.data){ w.document.body.innerHTML='<iframe src="'+p.data+'" style="position:fixed;inset:0;width:100%;height:100%;border:none;"></iframe>'; }
+        else { w.document.body.innerHTML='<p style="font-family:sans-serif;padding:20px;color:#b91c1c;">PDF não encontrado no banco.</p>'; }
+      }).catch(()=>{ w.document.body.innerHTML='<p style="font-family:sans-serif;padding:20px;color:#b91c1c;">Erro ao carregar o PDF.</p>'; });
     }
   }
   async function rsLoadFb(){
@@ -4803,6 +4922,7 @@ tryRestoreSession();
             registros.push({
               empresa, obrigacao, periodo, status, responsavel:resp, recibo_path:recPath,
               pdf_data:existing?existing.pdf_data:null,
+              pdf_ref:existing?(existing.pdf_ref||null):null,
               pdf_name:existing?existing.pdf_name:null,
               ok_auto :existing?existing.ok_auto :false
             });
@@ -5026,7 +5146,17 @@ tryRestoreSession();
   /* ── FINALIZAR ANEXO ─────────────────────────────────── */
   function finalizarAnexo(pdfData, pdfName, aba, idx){
     const reg=RS.abas[aba][idx];
-    reg.pdf_data=pdfData; reg.pdf_name=pdfName;
+    if(window._fbDb){
+      // Remove PDF antigo, se houver, e grava o novo em nó separado
+      if(reg.pdf_ref){ fbSet('cronograma/pdfs/'+reg.pdf_ref, null).catch(()=>{}); }
+      const id='pdf_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+      fbSet('cronograma/pdfs/'+id, {name:pdfName||'Recibo.pdf', data:pdfData})
+        .catch(e=>console.warn('FB anexo pdf:',e));
+      reg.pdf_ref=id; reg.pdf_data=null;
+    } else {
+      reg.pdf_data=pdfData;
+    }
+    reg.pdf_name=pdfName;
     reg.ok_auto=false;
     rsSave(); reciboRenderAll();
     alert('📎 Recibo anexado a "'+reg.empresa+'"! Aguardando conferencia para OK.');
@@ -5621,7 +5751,7 @@ tryRestoreSession();
       todosRegistros.forEach(r=>{
         let v='';
         if(key==='status'){
-          v=r.status==='ok'?'✅ OK':r.status==='n/a'?'— N/A':r.pdf_data?'📎 Anexado':'⏳ Pendente';
+          v=r.status==='ok'?'✅ OK':r.status==='n/a'?'— N/A':temPdf(r)?'📎 Anexado':'⏳ Pendente';
         } else {
           v=String(r[key]||'').trim();
         }
@@ -5641,14 +5771,14 @@ tryRestoreSession();
       if(statusFil==='ok'      && r.status!=='ok') return false;
       if(statusFil==='n/a'     && r.status!=='n/a') return false;
       if(statusFil==='pendente'&& r.status!=='pendente' && r.status) return false;
-      if(statusFil==='anexado' && !(r.pdf_data&&r.status!=='ok'&&r.status!=='n/a')) return false;
+      if(statusFil==='anexado' && !(temPdf(r)&&r.status!=='ok'&&r.status!=='n/a')) return false;
       if(respFil && !norm(r.responsavel||'').startsWith(respFil) && !respFil.startsWith(norm(r.responsavel||''))) return false;
       // Filtros de coluna
       for(const [key,val] of Object.entries(reciboColFilters)){
         if(!val||!val.length) continue;
         let cell='';
         if(key==='status'){
-          cell=r.status==='ok'?'✅ OK':r.status==='n/a'?'— N/A':r.pdf_data?'📎 Anexado':'⏳ Pendente';
+          cell=r.status==='ok'?'✅ OK':r.status==='n/a'?'— N/A':temPdf(r)?'📎 Anexado':'⏳ Pendente';
         } else {
           cell=String(r[key]||'').trim();
         }
@@ -5716,12 +5846,12 @@ tryRestoreSession();
         ?'<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">✅ OK</span>'
         :r.status==='n/a'
         ?'<span style="background:#f3f4f6;color:#9ca3af;padding:2px 8px;border-radius:10px;font-size:11px;">— N/A</span>'
-        :r.pdf_data
+        :temPdf(r)
         ?'<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">📎 Anexado</span>'
         :'<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">⏳ Pendente</span>';
 
       // Badge recibo
-      const reciboBadge=r.pdf_data
+      const reciboBadge=temPdf(r)
         ?`<span style="color:#2563eb;font-size:11px;font-weight:600;cursor:pointer;text-decoration:underline;" data-view="${i}">📄 ${r.pdf_name||'Recibo.pdf'}</span>`
         :r.recibo_path
         ?`<span style="color:#6b7280;font-size:11px;" title="${r.recibo_path}">📁 ${r.recibo_path.split('\\').pop().slice(0,28)}</span>`
@@ -5738,7 +5868,7 @@ tryRestoreSession();
         <td style="${TD}white-space:nowrap;">
           <button data-attach="${i}" title="Anexar PDF" style="padding:3px 9px;font-size:11px;border:1px solid #2563eb;border-radius:5px;background:#fff;color:#2563eb;cursor:pointer;">📎</button>
           ${r.status!=='ok'?`<button data-ok="${i}" title="Marcar OK" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #059669;border-radius:5px;background:#fff;color:#059669;cursor:pointer;">✓</button>`:`<button data-unok="${i}" title="Voltar para pendente" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #92400e;border-radius:5px;background:#fff;color:#92400e;cursor:pointer;">↩</button>`}
-          ${r.pdf_data?`<button data-del="${i}" title="Remover PDF" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #dc2626;border-radius:5px;background:#fff;color:#dc2626;cursor:pointer;">✕</button>`:''}
+          ${temPdf(r)?`<button data-del="${i}" title="Remover PDF" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #dc2626;border-radius:5px;background:#fff;color:#dc2626;cursor:pointer;">✕</button>`:''}
           ${r._manual?`<button data-del-row="${i}" title="Excluir linha" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #9f1239;border-radius:5px;background:#fff;color:#9f1239;cursor:pointer;">🗑</button>`:''}
         </td>
       </tr>`;
@@ -5748,7 +5878,7 @@ tryRestoreSession();
     tbody.querySelectorAll('[data-view]').forEach(el=>{
       el.addEventListener('click',()=>{
         const r=registros[parseInt(el.dataset.view)];
-        if(r.pdf_data){ const w=window.open(); w.document.write(`<iframe src="${r.pdf_data}" style="width:100%;height:100%;border:none;"></iframe>`); }
+        abrirPdf(r);
       });
     });
     tbody.querySelectorAll('[data-attach]').forEach(el=>{
@@ -5783,7 +5913,10 @@ tryRestoreSession();
         if(!confirm('Remover PDF anexado?')) return;
         const r=registros[parseInt(el.dataset.del)];
         const reg=RS.abas[r._aba].find(x=>norm(x.empresa)===norm(r.empresa)&&norm(x.obrigacao||'')===norm(r.obrigacao||''));
-        if(reg){ reg.pdf_data=null; reg.pdf_name=null; reg.ok_auto=false; rsSave(); reciboRenderAll(); }
+        if(reg){
+          if(reg.pdf_ref && window._fbDb){ fbSet('cronograma/pdfs/'+reg.pdf_ref, null).catch(()=>{}); }
+          reg.pdf_data=null; reg.pdf_ref=null; reg.pdf_name=null; reg.ok_auto=false; rsSave(); reciboRenderAll();
+        }
       });
     });
     tbody.querySelectorAll('[data-del-row]').forEach(el=>{
@@ -5861,6 +5994,7 @@ tryRestoreSession();
       status:    document.getElementById('modal-recibo-status').value,
       _manual:   true,
       pdf_data:  null,
+      pdf_ref:   null,
       pdf_name:  null,
       recibo_path: ''
     };
