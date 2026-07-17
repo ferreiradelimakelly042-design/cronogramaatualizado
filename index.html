@@ -4722,6 +4722,7 @@ tryRestoreSession();
 (function(){
   const LS_KEY = 'recibo_data_v2';
   let RS = {abas:{}, abaAtiva:null};   // reciboState
+  let reciboLastRows = []; // último array "registros" renderizado (para copiar/colar células)
 
   /* ── NORMALIZAÇÃO ────────────────────────────────────── */
   function norm(s){
@@ -5809,9 +5810,11 @@ tryRestoreSession();
       }
       thead.innerHTML=`<tr>${mkTh('empresa','Empresa','160px')}${mkTh('obrigacao','Obrigação','130px')}${mkTh('periodo','Período','70px')}${mkTh('responsavel','Responsável','80px')}${mkTh('status','Status','100px')}<th data-rcolkey="recibo" class="${frozen0.includes('recibo')?'recibo-frozen-col':''}" style="${TH}min-width:160px;">Recibo</th><th data-rcolkey="acoes" style="${TH}min-width:80px;cursor:default;">Ações</th></tr>`;
       tbody.innerHTML='';
+      reciboLastRows=[]; reciboClearSelection();
       empty.style.display='block'; reciboApplyColVisibility(); reciboApplyFrozenTransform(); return;
     }
     empty.style.display='none';
+    reciboLastRows=registros;
 
     const TH='position:sticky;top:0;background:#F0F3F7;color:#1a2340;font-weight:700;border-bottom:1px solid #e0e6f0;border-right:1px solid #e0e6f0;padding:6px 10px;white-space:nowrap;z-index:2;font-size:12px;user-select:none;';
     const TD='border-bottom:1px solid #e0e6f0;border-right:1px solid #e0e6f0;padding:5px 8px;white-space:nowrap;vertical-align:middle;font-size:12px;overflow:hidden;text-overflow:ellipsis;';
@@ -5858,13 +5861,13 @@ tryRestoreSession();
         :'<span style="color:#d1d5db;font-size:11px;">—</span>';
 
       const frz=k=>frozen.includes(k)?' recibo-frozen-col':'';
-      return `<tr onmouseover="this.style.background='#f5f8ff'" onmouseout="this.style.background=''">
-        <td data-rcolkey="empresa" class="${frz('empresa')}" style="${TD}font-weight:600;max-width:200px;padding:2px 4px;"><input type="text" data-redit-empresa="${i}" value="${esc(r.empresa||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;font-weight:600;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
-        <td data-rcolkey="obrigacao" class="${frz('obrigacao')}" style="${TD}max-width:180px;">${r.obrigacao||r._aba||'—'}</td>
-        <td data-rcolkey="periodo" class="${frz('periodo')}" style="${TD}color:#555;padding:2px 4px;"><input type="text" data-redit-periodo="${i}" value="${esc(r.periodo||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
-        <td data-rcolkey="responsavel" class="${frz('responsavel')}" style="${TD}padding:2px 4px;"><input type="text" data-redit-responsavel="${i}" value="${esc(r.responsavel||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
-        <td data-rcolkey="status" class="${frz('status')}" style="${TD}">${badge}</td>
-        <td data-rcolkey="recibo" class="${frz('recibo')}" style="${TD}max-width:200px;">${reciboBadge}</td>
+      return `<tr onmouseover="this.style.background='#f5f8ff'" onmouseout="this.style.background=''" data-rrowidx="${i}">
+        <td data-rcolkey="empresa" data-rid="${i}" data-rfield="empresa" class="${frz('empresa')}" style="${TD}font-weight:600;max-width:200px;padding:2px 4px;"><input type="text" data-redit-empresa="${i}" value="${esc(r.empresa||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;font-weight:600;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
+        <td data-rcolkey="obrigacao" data-rid="${i}" data-rfield="obrigacao" class="${frz('obrigacao')}" style="${TD}max-width:180px;">${r.obrigacao||r._aba||'—'}</td>
+        <td data-rcolkey="periodo" data-rid="${i}" data-rfield="periodo" class="${frz('periodo')}" style="${TD}color:#555;padding:2px 4px;"><input type="text" data-redit-periodo="${i}" value="${esc(r.periodo||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
+        <td data-rcolkey="responsavel" data-rid="${i}" data-rfield="responsavel" class="${frz('responsavel')}" style="${TD}padding:2px 4px;"><input type="text" data-redit-responsavel="${i}" value="${esc(r.responsavel||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
+        <td data-rcolkey="status" data-rid="${i}" data-rfield="status" class="${frz('status')}" style="${TD}">${badge}</td>
+        <td data-rcolkey="recibo" data-rid="${i}" data-rfield="recibo" class="${frz('recibo')}" style="${TD}max-width:200px;">${reciboBadge}</td>
         <td style="${TD}white-space:nowrap;">
           <button data-attach="${i}" title="Anexar PDF" style="padding:3px 9px;font-size:11px;border:1px solid #2563eb;border-radius:5px;background:#fff;color:#2563eb;cursor:pointer;">📎</button>
           ${r.status!=='ok'?`<button data-ok="${i}" title="Marcar OK" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #059669;border-radius:5px;background:#fff;color:#059669;cursor:pointer;">✓</button>`:`<button data-unok="${i}" title="Voltar para pendente" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #92400e;border-radius:5px;background:#fff;color:#92400e;cursor:pointer;">↩</button>`}
@@ -5959,7 +5962,140 @@ tryRestoreSession();
     });
     reciboApplyColVisibility();
     reciboApplyFrozenTransform();
+    reciboMarkSelection();
   }
+
+  /* =========================================================
+     COPIAR / COLAR CÉLULAS (estilo Excel) — Recibos
+     Mesmo comportamento do Cronograma Mensal: clique numa célula
+     para selecioná-la; clique e arraste (ou Shift+clique) para
+     selecionar um bloco retangular de linhas e colunas. Ctrl+C
+     copia, Ctrl+V cola. Apenas Empresa, Período e Responsável são
+     coláveis (as demais colunas são calculadas/derivadas).
+     ========================================================= */
+  let reciboClipboard=null;      // grid copiado: [[{field,value},...],...]
+  let reciboSelAnchor=null;      // {rowIdx,colIdx} onde a seleção começou
+  let reciboSelActive=null;      // {rowIdx,colIdx} canto oposto atual
+  let reciboSelDragging=false;
+  const RECIBO_SEL_FIELDS=['empresa','obrigacao','periodo','responsavel','status','recibo'];
+  const RECIBO_EDITABLE_FIELDS=new Set(['empresa','periodo','responsavel']);
+
+  function reciboSelRect(){
+    if(!reciboSelAnchor||!reciboSelActive)return null;
+    return {
+      r0:Math.min(reciboSelAnchor.rowIdx,reciboSelActive.rowIdx),
+      r1:Math.max(reciboSelAnchor.rowIdx,reciboSelActive.rowIdx),
+      c0:Math.min(reciboSelAnchor.colIdx,reciboSelActive.colIdx),
+      c1:Math.max(reciboSelAnchor.colIdx,reciboSelActive.colIdx)
+    };
+  }
+  function reciboCoordsFromEl(el){
+    const field=el.dataset.rfield,ridRaw=el.dataset.rid;
+    if(!field||ridRaw===undefined)return null;
+    const rowIdx=parseInt(ridRaw,10);
+    const colIdx=RECIBO_SEL_FIELDS.indexOf(field);
+    if(isNaN(rowIdx)||colIdx<0)return null;
+    return {rowIdx,colIdx};
+  }
+  function reciboClearSelection(){
+    document.querySelectorAll('#recibo-wrap .cell-selected').forEach(el=>el.classList.remove('cell-selected'));
+    document.querySelectorAll('#recibo-wrap tr.row-active').forEach(el=>el.classList.remove('row-active'));
+    reciboSelAnchor=null;reciboSelActive=null;reciboSelDragging=false;
+  }
+  function reciboMarkSelection(){
+    document.querySelectorAll('#recibo-wrap .cell-selected').forEach(el=>el.classList.remove('cell-selected'));
+    document.querySelectorAll('#recibo-wrap tr.row-active').forEach(el=>el.classList.remove('row-active'));
+    const rect=reciboSelRect();if(!rect)return;
+    for(let ri=rect.r0;ri<=rect.r1;ri++){
+      const tr=document.querySelector(`#recibo-tbody tr[data-rrowidx="${ri}"]`);
+      if(tr)tr.classList.add('row-active');
+      for(let ci=rect.c0;ci<=rect.c1;ci++){
+        const field=RECIBO_SEL_FIELDS[ci];if(!field)continue;
+        const td=document.querySelector(`#recibo-tbody td[data-rid="${ri}"][data-rfield="${field}"]`);
+        if(td)td.classList.add('cell-selected');
+      }
+    }
+  }
+  document.getElementById('recibo-wrap').addEventListener('mousedown',e=>{
+    const el=e.target.closest('[data-rid][data-rfield]');
+    if(!el)return;
+    const coords=reciboCoordsFromEl(el);
+    if(!coords)return;
+    if(el.tagName==='SELECT'&&(e.shiftKey||reciboSelDragging)){e.preventDefault();}
+    if(e.shiftKey&&reciboSelAnchor){
+      reciboSelActive=coords;
+      reciboMarkSelection();
+      return;
+    }
+    reciboSelAnchor=coords;reciboSelActive=coords;reciboSelDragging=true;
+    reciboMarkSelection();
+  });
+  document.getElementById('recibo-wrap').addEventListener('mouseover',e=>{
+    if(!reciboSelDragging)return;
+    if(document.activeElement&&document.activeElement.tagName==='SELECT'&&document.activeElement!==e.target){
+      document.activeElement.blur();
+    }
+    const el=e.target.closest('[data-rid][data-rfield]');
+    if(!el)return;
+    const coords=reciboCoordsFromEl(el);
+    if(!coords)return;
+    reciboSelActive=coords;
+    reciboMarkSelection();
+  });
+  document.addEventListener('mouseup',()=>{reciboSelDragging=false;});
+  document.addEventListener('keydown',e=>{
+    const modRecibos=document.getElementById('mod-recibos');
+    if(!modRecibos||modRecibos.style.display==='none')return;
+    const key=e.key.toLowerCase();
+    const rect=reciboSelRect();
+    if((e.ctrlKey||e.metaKey)&&key==='c'){
+      if(!rect)return;
+      const grid=[];
+      for(let ri=rect.r0;ri<=rect.r1;ri++){
+        const row=reciboLastRows[ri];const line=[];
+        for(let ci=rect.c0;ci<=rect.c1;ci++){
+          const field=RECIBO_SEL_FIELDS[ci];
+          line.push({field,value:row?(row[field]||''):''});
+        }
+        grid.push(line);
+      }
+      reciboClipboard=grid;
+      document.querySelectorAll('#recibo-wrap .cell-selected').forEach(td=>{
+        td.classList.add('cell-copy-flash');
+        setTimeout(()=>td.classList.remove('cell-copy-flash'),350);
+      });
+    }
+    if((e.ctrlKey||e.metaKey)&&key==='v'){
+      if(!reciboClipboard||!rect)return;
+      e.preventDefault();
+      const copyH=reciboClipboard.length,copyW=reciboClipboard[0]?reciboClipboard[0].length:0;
+      if(!copyH||!copyW)return;
+      const selH=rect.r1-rect.r0+1,selW=rect.c1-rect.c0+1;
+      const single=(copyH===1&&copyW===1);
+      const targetH=single?selH:copyH;
+      const targetW=single?selW:copyW;
+      let changed=0;
+      for(let dr=0;dr<targetH;dr++){
+        const row=reciboLastRows[rect.r0+dr];if(!row)continue;
+        const reg=RS.abas[row._aba]&&RS.abas[row._aba].find(x=>norm(x.empresa)===norm(row.empresa)&&norm(x.obrigacao||'')===norm(row.obrigacao||'')&&(x.periodo||'')===(row.periodo||''));
+        if(!reg)continue;
+        for(let dc=0;dc<targetW;dc++){
+          const field=RECIBO_SEL_FIELDS[rect.c0+dc];if(!field)continue;
+          if(!RECIBO_EDITABLE_FIELDS.has(field))continue; // obrigação/status/recibo são calculados
+          const src=reciboClipboard[dr%copyH][dc%copyW];
+          reg[field]=src.value;
+          changed++;
+        }
+      }
+      if(changed){
+        rsSave();
+        reciboRenderAll();
+      }
+    }
+  });
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('#recibo-wrap'))reciboClearSelection();
+  });
 
   /* ── INPUTS E LISTENERS ──────────────────────────────── */
   const inXlsx=document.createElement('input'); inXlsx.type='file'; inXlsx.accept='.xlsx,.xls'; inXlsx.style.display='none';
