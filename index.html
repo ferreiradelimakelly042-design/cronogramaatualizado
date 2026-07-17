@@ -5859,10 +5859,10 @@ tryRestoreSession();
 
       const frz=k=>frozen.includes(k)?' recibo-frozen-col':'';
       return `<tr onmouseover="this.style.background='#f5f8ff'" onmouseout="this.style.background=''">
-        <td data-rcolkey="empresa" class="${frz('empresa')}" style="${TD}font-weight:600;max-width:200px;">${r.empresa}</td>
+        <td data-rcolkey="empresa" class="${frz('empresa')}" style="${TD}font-weight:600;max-width:200px;padding:2px 4px;"><input type="text" data-redit-empresa="${i}" value="${esc(r.empresa||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;font-weight:600;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
         <td data-rcolkey="obrigacao" class="${frz('obrigacao')}" style="${TD}max-width:180px;">${r.obrigacao||r._aba||'—'}</td>
-        <td data-rcolkey="periodo" class="${frz('periodo')}" style="${TD}color:#555;">${r.periodo||'—'}</td>
-        <td data-rcolkey="responsavel" class="${frz('responsavel')}" style="${TD}">${r.responsavel||'—'}</td>
+        <td data-rcolkey="periodo" class="${frz('periodo')}" style="${TD}color:#555;padding:2px 4px;"><input type="text" data-redit-periodo="${i}" value="${esc(r.periodo||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
+        <td data-rcolkey="responsavel" class="${frz('responsavel')}" style="${TD}padding:2px 4px;"><input type="text" data-redit-responsavel="${i}" value="${esc(r.responsavel||'')}" style="width:100%;border:1px solid transparent;background:transparent;font:inherit;color:inherit;padding:3px 6px;border-radius:4px;" onfocus="this.style.border='1px solid #2D6CDF';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"></td>
         <td data-rcolkey="status" class="${frz('status')}" style="${TD}">${badge}</td>
         <td data-rcolkey="recibo" class="${frz('recibo')}" style="${TD}max-width:200px;">${reciboBadge}</td>
         <td style="${TD}white-space:nowrap;">
@@ -5916,6 +5916,36 @@ tryRestoreSession();
         if(reg){
           if(reg.pdf_ref && window._fbDb){ fbSet('cronograma/pdfs/'+reg.pdf_ref, null).catch(()=>{}); }
           reg.pdf_data=null; reg.pdf_ref=null; reg.pdf_name=null; reg.ok_auto=false; rsSave(); reciboRenderAll();
+        }
+      });
+    });
+    tbody.querySelectorAll('[data-redit-empresa]').forEach(el=>{
+      el.addEventListener('change',()=>{
+        const r=registros[parseInt(el.dataset.reditEmpresa)];
+        const reg=RS.abas[r._aba].find(x=>norm(x.empresa)===norm(r.empresa)&&norm(x.obrigacao||'')===norm(r.obrigacao||'')&&(x.periodo||'')===(r.periodo||''));
+        if(reg){
+          const novo=el.value.trim();
+          if(novo && novo!==reg.empresa){ reg.empresa=novo; rsSave(); reciboRenderAll(); }
+        }
+      });
+    });
+    tbody.querySelectorAll('[data-redit-periodo]').forEach(el=>{
+      el.addEventListener('change',()=>{
+        const r=registros[parseInt(el.dataset.reditPeriodo)];
+        const reg=RS.abas[r._aba].find(x=>norm(x.empresa)===norm(r.empresa)&&norm(x.obrigacao||'')===norm(r.obrigacao||'')&&(x.periodo||'')===(r.periodo||''));
+        if(reg){
+          const novo=el.value.trim();
+          if(novo!==reg.periodo){ reg.periodo=novo; rsSave(); reciboRenderAll(); }
+        }
+      });
+    });
+    tbody.querySelectorAll('[data-redit-responsavel]').forEach(el=>{
+      el.addEventListener('change',()=>{
+        const r=registros[parseInt(el.dataset.reditResponsavel)];
+        const reg=RS.abas[r._aba].find(x=>norm(x.empresa)===norm(r.empresa)&&norm(x.obrigacao||'')===norm(r.obrigacao||'')&&(x.periodo||'')===(r.periodo||''));
+        if(reg){
+          const novo=el.value.trim();
+          if(novo!==reg.responsavel){ reg.responsavel=novo; rsSave(); reciboRenderAll(); }
         }
       });
     });
@@ -6047,7 +6077,9 @@ tryRestoreSession();
     dd.style.left=left+'px';
     dd.classList.add('open');
   }
-  document.getElementById('recibo-wrap').addEventListener('click', function(e){
+  document.addEventListener('click', function(e){
+    // Só processa cliques relacionados aos filtros de coluna dos RECIBOS
+    if(!e.target.closest('#recibo-wrap') && !e.target.closest('.col-filter-dropdown')) return;
     // Abrir/fechar dropdown
     const btn=e.target.closest('.col-filter-btn[data-rcfk]');
     if(btn && !e.target.closest('.col-filter-item') && !e.target.closest('.col-filter-actions')){
@@ -6088,7 +6120,7 @@ tryRestoreSession();
       return;
     }
   }, true);
-  document.getElementById('recibo-wrap').addEventListener('change', function(e){
+  document.addEventListener('change', function(e){
     const chk=e.target.closest('.col-filter-dropdown input[data-rck]');
     if(!chk) return;
     const key=chk.dataset.rck,val=chk.dataset.rcv;
