@@ -573,6 +573,7 @@ tr.row-expanded td{background:#F0F6FF!important;}
   <div id="mod-time">
     <div class="time-toolbar">
       <button class="btn btn-green" id="btn-time-add">+ Lançar tempo</button>
+      <button class="btn btn-secondary" id="btn-time-export">📥 Exportar .xlsx</button>
       <button class="btn btn-gold" id="btn-relatorio-gerencial">📊 Relatório Gerencial</button>
       <button class="btn btn-danger" id="btn-time-reset" style="display:none;margin-left:auto;" title="Apaga todos os lançamentos do módulo TIME">🗑 Zerar TIME</button>
     </div>
@@ -1825,7 +1826,7 @@ function buildFilterOptions(){
   document.getElementById('f-status').innerHTML='<option value="">Status (todos)</option>'+['FEITO','NO PRAZO','VENCIDO','PENDENTE'].map(s=>`<option value="${s}">${s}</option>`).join('');
   const periods=Array.from(new Set(state.data.map(r=>r.periodo).filter(isISO))).sort();
   document.getElementById('f-periodo').innerHTML='<option value="">Período (todos)</option>'+periods.map(p=>`<option value="${p}">${fmtMonthYear(p)}</option>`).join('');
-  const resps=Array.from(new Set(state.data.flatMap(r=>[r.elab_resp,r.rev_resp,r.post_resp,r.revisor]).filter(v=>v&&norm(v)!=='N/A'&&isValidResp(v)))).sort();
+  const resps=Array.from(new Set(state.data.flatMap(r=>[r.elab_resp,r.rev_resp,r.post_resp,r.revisor]).filter(v=>v&&norm(v)!=='N/A'&&isValidResp(v)))).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
   document.getElementById('f-resp').innerHTML='<option value="">Responsável (todos)</option>'+resps.map(r=>`<option value="${r}">${r}</option>`).join('');
 }
 ['f-search','f-dep','f-status','f-periodo','f-resp'].forEach(id=>{
@@ -2172,14 +2173,22 @@ const FILTERABLE_COLS=new Set(COLUMNS.map(c=>c.key));
 function getColFilterValues(key){
   const colDef=COLUMNS.find(c=>c.key===key);
   const RESP_KEYS=new Set(['elab_resp','rev_resp','post_resp','revisor']);
-  const all=state.data.map(r=>{
-    if(key.endsWith('_status')) return effectiveStatus(r,key);
-    let v=r[key]??'';
-    if(key==='periodo'&&v) v=fmtMonthYear(v);
-    else if(colDef&&colDef.type==='date'&&isISO(v)) v=fmtDateBR(v);
-    return v;
-  }).filter(v=>v&&String(v).trim()!=='').filter(v=>!RESP_KEYS.has(key)||isValidResp(v));
-  return Array.from(new Set(all)).sort();
+  const isDateCol=key==='periodo'||(colDef&&colDef.type==='date');
+  // Para colunas de data/período, ordenamos pelo valor ISO real (cronológico),
+  // não pela string formatada dd/mm/yyyy, que ordenaria alfabeticamente errado.
+  const pairs=state.data.map(r=>{
+    let raw=key.endsWith('_status')?effectiveStatus(r,key):(r[key]??'');
+    let display=raw;
+    if(key==='periodo'&&raw) display=fmtMonthYear(raw);
+    else if(colDef&&colDef.type==='date'&&isISO(raw)) display=fmtDateBR(raw);
+    return {display,sortKey:isDateCol?raw:display};
+  }).filter(p=>p.display&&String(p.display).trim()!=='').filter(p=>!RESP_KEYS.has(key)||isValidResp(p.display));
+  const seen=new Map();
+  pairs.forEach(p=>{if(!seen.has(p.display))seen.set(p.display,p.sortKey);});
+  return Array.from(seen.keys()).sort((a,b)=>{
+    if(isDateCol) return String(seen.get(a)).localeCompare(String(seen.get(b)));
+    return String(a).localeCompare(String(b),'pt-BR',{sensitivity:'base'});
+  });
 }
 function groupColClass(group){
   return group==='ELABORAÇÃO'?'col-grp-elab':group==='REVISÃO'?'col-grp-rev':group==='DATA DE POSTAGEM'?'col-grp-post':group==='CONFERÊNCIA'?'col-grp-conf':'';
@@ -2256,7 +2265,9 @@ document.getElementById('table-wrap').addEventListener('change',e=>{
   const allowed=col.adminOnly?state.currentUser.role==='admin':canEditField(row,field,state.currentUser);
   if(!allowed)return;
   if(field==='tempo'){el.value=normalizeTempo(el.value);}
-  row[field]=el.value;saveData();
+  row[field]=el.value;
+  if(field==='tempo')stampTempoFiller(row);
+  saveData();
   timeSyncFromFiscal(row,true);timeRefreshUI();
   renderTable();renderStats();
 });
@@ -2272,7 +2283,7 @@ document.getElementById('table-wrap').addEventListener('blur',e=>{
   const row=state.data.find(r=>r.id===id);if(!row)return;
   const norm=normalizeTempo(el.value);
   el.value=norm;
-  row.tempo=norm;saveData();
+  row.tempo=norm;stampTempoFiller(row);saveData();
   timeSyncFromFiscal(row);timeRefreshUI();
 },true);
 document.getElementById('table-wrap').addEventListener('click',e=>{
@@ -2543,7 +2554,7 @@ document.addEventListener('keydown',e=>{
         if(!col||col.type==='status')continue; // STATUS é sempre calculado
         if(!canEditField(row,field,state.currentUser))continue;
         const src=cellClipboard[dr%copyH][dc%copyW];
-        if(field==='tempo'){row[field]=normalizeTempo(src.value);rowsToSyncTime.add(row);}
+        if(field==='tempo'){row[field]=normalizeTempo(src.value);stampTempoFiller(row);rowsToSyncTime.add(row);}
         else{row[field]=src.value;}
         changed++;
       }
@@ -2924,6 +2935,7 @@ function applyDetailChange(el){
   let val=el.value;
   if(el.type==='month'&&val) val=val+'-01';
   r[el.dataset.dmkey]=val;
+  if(el.dataset.dmkey==='tempo')stampTempoFiller(r);
   // Ao selecionar/digitar a EMPRESA, preenche automaticamente RT, Estado,
   // Cidade e ATIV com base em outra atividade já existente da mesma empresa
   // na planilha (esses dados costumam ser os mesmos para todas as
@@ -3260,7 +3272,7 @@ document.addEventListener('blur',e=>{
   const norm=normalizeTempo(el.value);
   if(norm!==el.value) el.value=norm;
   const row=contState.data.find(r=>r.id===el.dataset.id);if(!row)return;
-  row.tempo=norm;saveContData();timeSyncFromCont(row);timeRefreshUI();
+  row.tempo=norm;stampTempoFiller(row);saveContData();timeSyncFromCont(row);timeRefreshUI();
 },true);
 document.getElementById('cont-wrap').addEventListener('change',e=>{
   const el=e.target;
@@ -3268,7 +3280,7 @@ document.getElementById('cont-wrap').addEventListener('change',e=>{
   const norm=normalizeTempo(el.value);
   el.value=norm;
   const row=contState.data.find(r=>r.id===el.dataset.id);if(!row)return;
-  row.tempo=norm;saveContData();
+  row.tempo=norm;stampTempoFiller(row);saveContData();
   timeSyncFromCont(row);timeRefreshUI();
 });
 
@@ -3424,6 +3436,7 @@ function openContDetailModal(row){
       if(el.dataset.cdk==='tempo'){
         el.value=normalizeTempo(el.value);
         r[el.dataset.cdk]=el.value;
+        stampTempoFiller(r);
       } else {
         r[el.dataset.cdk]=el.value;
       }
@@ -3622,7 +3635,7 @@ function contTempoBlur(el){
   const norm=normalizeTempo(el.value);
   el.value=norm;
   const r=contState.data.find(x=>x.id===el.dataset.id);
-  if(r){r.tempo=norm;saveContData();timeSyncFromCont(r);timeRefreshUI();}
+  if(r){r.tempo=norm;stampTempoFiller(r);saveContData();timeSyncFromCont(r);timeRefreshUI();}
 }
 // Normaliza o campo tempo para HH:MM ao sair do campo
 // Ex: "50" -> "00:50" | "130" -> "1:30" | "1h30" -> "1:30" | "1.5" -> "1:30"
@@ -3672,10 +3685,17 @@ function timeSyncFromFiscal(row, interactive){
     descricao:row.atividade||'',
     tempo:row.tempo||'',
     data:existingIdx>=0?(timeState.data[existingIdx].data||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10),
-    // Registra QUEM preencheu o tempo (usuário logado). Preserva o criador
-    // original em atualizações; só define no primeiro preenchimento (ou em
-    // lançamentos antigos que ainda não tinham esse campo).
-    criadoPor:existingIdx>=0?(timeState.data[existingIdx].criadoPor||(state.currentUser?state.currentUser.username:'')):(state.currentUser?state.currentUser.username:''),
+    // Registra QUEM preencheu o campo TEMPO na origem (row.tempoPor, gravado
+    // no exato momento em que o campo foi digitado — ver stampTempoFiller()).
+    // Isso é essencial porque este sync pode rodar em QUALQUER sessão
+    // conectada (ex.: outro usuário abrindo o TIME, ou uma atualização vinda
+    // do Firebase) — usar o usuário logado NESSE momento atribuiria o
+    // lançamento à pessoa errada. Preserva o criador original em
+    // atualizações; só define no primeiro preenchimento (ou em lançamentos
+    // antigos que ainda não tinham esse campo, como fallback final).
+    criadoPor:existingIdx>=0
+      ?(timeState.data[existingIdx].criadoPor||row.tempoPor||(state.currentUser?state.currentUser.username:''))
+      :(row.tempoPor||(state.currentUser?state.currentUser.username:'')),
     origem:'auto-fiscal'
   };
   if(existingIdx>=0){timeState.data[existingIdx]=entry;}
@@ -3700,13 +3720,27 @@ function timeSyncFromCont(row){
     descricao:'Contabilidade — '+(row.freq||row.trib||''),
     tempo:row.tempo||'',
     data:existingIdx>=0?(timeState.data[existingIdx].data||new Date().toISOString().slice(0,10)):new Date().toISOString().slice(0,10),
-    criadoPor:existingIdx>=0?(timeState.data[existingIdx].criadoPor||(state.currentUser?state.currentUser.username:'')):(state.currentUser?state.currentUser.username:''),
+    // Ver comentário equivalente em timeSyncFromFiscal: usa quem realmente
+    // preencheu o campo TEMPO na origem, não o usuário logado neste sync.
+    criadoPor:existingIdx>=0
+      ?(timeState.data[existingIdx].criadoPor||row.tempoPor||(state.currentUser?state.currentUser.username:''))
+      :(row.tempoPor||(state.currentUser?state.currentUser.username:'')),
     origem:'auto-cont'
   };
   if(existingIdx>=0){timeState.data[existingIdx]=entry;}
   else{timeState.data.push(entry);}
   saveTimeData();
 }
+
+// Grava, no próprio registro de origem (fiscal ou contabilidade), qual
+// usuário preencheu o campo TEMPO — chamado sempre que o campo é editado
+// interativamente. Sem isso, o sync automático do TIME (que pode rodar em
+// qualquer sessão conectada) não tem como saber quem foi o autor real.
+function stampTempoFiller(row){
+  if(!row||!state.currentUser)return;
+  row.tempoPor=state.currentUser.username||row.tempoPor||'';
+}
+
 
 function timeGetFiltered(){
   const f=timeState.filters;
@@ -3818,6 +3852,100 @@ function timeBuildSectorOptions(){
   const cur=sel.value;
   sel.innerHTML='<option value="">Setor (todos)</option>'+['FISCAL','FOPAG','CONT','SOC','FINANC','PF','CONTABILIDADE','OUTROS'].map(s=>`<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
 }
+
+// Exportar módulo TIME (lançamentos detalhados, respeitando os filtros ativos)
+function exportTimeXLSX(){
+  const rows=timeGetFiltered();
+  if(!rows.length){alert('Nenhum lançamento para exportar.');return;}
+  const totalMin=rows.reduce((s,r)=>s+parseTempo(r.tempo),0);
+  const gerado=new Date().toLocaleString('pt-BR');
+
+  function styledSheet(aoa,colWidths,titleRows){
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=colWidths.map(w=>({wch:w}));
+    const nRows=aoa.length, nCols=Math.max(...aoa.map(r=>r?r.length:0));
+    for(let ti=0;ti<(titleRows||1);ti++){
+      ws['!merges']=ws['!merges']||[];
+      ws['!merges'].push({s:{r:ti,c:0},e:{r:ti,c:nCols-1}});
+      xlsRange(ws,ti,0,ti,nCols-1,ti===0?ST_TITLE:xlsStyle({bold:true,sz:11,color:XLS_NAVY,bg:XLS_GRAY,align:'center',border:true}));
+    }
+    const hi=titleRows||1;
+    xlsRange(ws,hi,0,hi,nCols-1,ST_HEAD);
+    for(let r=hi+1;r<nRows;r++){
+      const odd=r%2===0;
+      for(let ci=0;ci<nCols;ci++){
+        const addr=XLSX.utils.encode_cell({r,c:ci});
+        if(!ws[addr]) ws[addr]={t:'s',v:''};
+        const isNum=typeof ws[addr].v==='number';
+        if(r===nRows-1){
+          ws[addr].s=ci===0?ST_TOTALN:ST_TOTAL;
+        } else {
+          ws[addr].s=odd?(isNum?ST_ODD_R:ST_ODD):(isNum?ST_EVEN_R:ST_EVEN);
+        }
+      }
+    }
+    ws['!rows']=[{hpt:22},...Array(nRows-1).fill({hpt:15})];
+    return ws;
+  }
+
+  // Aba 1: Resumo
+  const resumo=[
+    ['MÓDULO TIME — LANÇAMENTOS'],
+    ['Gerado em: '+gerado,''],
+    ['MÉTRICA','VALOR'],
+    ['Total de Lançamentos', rows.length],
+    ['Tempo Total', formatMinutes(totalMin)],
+    ['Empresas Atendidas', new Set(rows.map(r=>r.empresa).filter(Boolean)).size],
+    ['Colaboradores', new Set(rows.map(r=>r.colaborador).filter(Boolean)).size],
+    ['Lançamentos Automáticos', rows.filter(r=>r.srcType).length],
+    ['Lançamentos Manuais', rows.filter(r=>!r.srcType).length],
+  ];
+  const wsResumo=XLSX.utils.aoa_to_sheet(resumo);
+  wsResumo['!cols']=[{wch:28},{wch:18}];
+  wsResumo['!merges']=[{s:{r:0,c:0},e:{r:0,c:1}},{s:{r:1,c:0},e:{r:1,c:1}}];
+  xlsRange(wsResumo,0,0,0,1,ST_TITLE);
+  xlsRange(wsResumo,1,0,1,1,xlsStyle({sz:10,color:'555555',bg:XLS_GRAY,align:'center',border:true}));
+  xlsRange(wsResumo,2,0,2,1,ST_HEAD);
+  for(let r=3;r<resumo.length;r++){
+    const odd=r%2===0;
+    xlsSet(wsResumo,r,0,resumo[r][0],odd?ST_ODD:ST_EVEN);
+    xlsSet(wsResumo,r,1,resumo[r][1],xlsStyle({bold:true,sz:10,bg:odd?XLS_LGRAY:XLS_WHITE,border:true,align:'right',color:XLS_NAVY}));
+  }
+  wsResumo['!rows']=[{hpt:22},{hpt:16},...Array(resumo.length-2).fill({hpt:15})];
+
+  // Aba 2: Resumo por empresa (mesmos dados do card "Resumo por empresa" da tela)
+  const byEmpresa={};
+  rows.forEach(r=>{
+    const k=r.empresa||'(sem empresa)';
+    if(!byEmpresa[k]) byEmpresa[k]={min:0,count:0};
+    byEmpresa[k].min+=parseTempo(r.tempo); byEmpresa[k].count++;
+  });
+  const empData=[['RESUMO POR EMPRESA'],['EMPRESA','LANÇAMENTOS','TEMPO (hh:mm)','% DO TOTAL']];
+  let totEL=0,totEC=0;
+  Object.entries(byEmpresa).sort((a,b)=>b[1].min-a[1].min).forEach(([k,v])=>{
+    empData.push([k,v.count,formatMinutes(v.min),totalMin?Math.round(v.min/totalMin*100)+'%':'0%']);
+    totEL+=v.count; totEC+=v.min;
+  });
+  empData.push(['TOTAL',totEL,formatMinutes(totEC),'100%']);
+  const wsEmp=styledSheet(empData,[32,13,13,10],1);
+
+  // Aba 3: Lançamentos detalhados
+  const detData=[
+    ['LANÇAMENTOS DETALHADOS — '+gerado],
+    ['EMPRESA','COLABORADOR','SETOR','DESCRIÇÃO DA ATIVIDADE','TEMPO','DATA','ORIGEM']
+  ];
+  rows.slice().sort((a,b)=>(a.data||'').localeCompare(b.data||'')).forEach(r=>{
+    detData.push([r.empresa||'',r.colaborador||'',r.setor||'',r.descricao||'',r.tempo||'',r.data?fmtDateBR(r.data):'',r.srcType?'Automático':'Manual']);
+  });
+  const wsDet=styledSheet(detData,[28,16,10,42,9,12,12],1);
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,wsResumo,'Resumo');
+  XLSX.utils.book_append_sheet(wb,wsEmp,'Por Empresa');
+  XLSX.utils.book_append_sheet(wb,wsDet,'Lançamentos');
+  XLSX.writeFile(wb,'time_lancamentos_'+new Date().toISOString().slice(0,10)+'.xlsx',{bookType:'xlsx',cellStyles:true});
+}
+document.getElementById('btn-time-export').addEventListener('click',exportTimeXLSX);
 
 // Table events
 document.getElementById('time-tbody').addEventListener('blur',e=>{
@@ -5700,7 +5828,7 @@ tryRestoreSession();
   /* ── RENDER PRINCIPAL ────────────────────────────────── */
   function reciboRenderAll(){
     rsLoad();
-    const abas=Object.keys(RS.abas);
+    const abas=Object.keys(RS.abas).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
     const navEl    =document.getElementById('recibo-tabs-nav');
     const abaSelect=document.getElementById('recibo-aba');
     const searchVal=norm(document.getElementById('recibo-search').value||'');
@@ -5719,7 +5847,7 @@ tryRestoreSession();
     const respAtual=respSel.value;
     const allResps=Array.from(new Set(
       abas.flatMap(a=>(RS.abas[a]||[]).map(r=>r.responsavel||'').filter(Boolean))
-    )).sort();
+    )).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
     respSel.innerHTML='<option value="">Responsável (todos)</option>'+
       allResps.map(r=>`<option value="${r}"${r===respAtual?' selected':''}>${r}</option>`).join('');
 
