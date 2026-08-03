@@ -849,17 +849,17 @@ tr.row-expanded td{background:#F0F6FF!important;}
     <button class="close-x" data-close="modal-time-add">✕</button>
     <h2 id="time-modal-title">Lançar tempo</h2>
     <div class="dm-grid" style="grid-template-columns:1fr 1fr;">
-      <div class="dm-field dm-full"><label class="dm-lbl">Empresa</label><input type="text" class="dm-input" id="tm-empresa" placeholder="Selecione ou digite..." autocomplete="off" list="tm-empresa-list"><datalist id="tm-empresa-list"></datalist></div>
-      <div class="dm-field"><label class="dm-lbl">Colaborador</label><input type="text" class="dm-input" id="tm-colab" placeholder="Nome do colaborador"></div>
-      <div class="dm-field"><label class="dm-lbl">Setor</label>
-        <select class="dm-input" id="tm-setor">
+      <div class="dm-field dm-full"><label class="dm-lbl">Empresa *</label><input type="text" class="dm-input" id="tm-empresa" placeholder="Selecione ou digite..." autocomplete="off" list="tm-empresa-list" required><datalist id="tm-empresa-list"></datalist></div>
+      <div class="dm-field"><label class="dm-lbl">Colaborador *</label><input type="text" class="dm-input" id="tm-colab" placeholder="Nome do colaborador" required></div>
+      <div class="dm-field"><label class="dm-lbl">Setor *</label>
+        <select class="dm-input" id="tm-setor" required>
           <option value="">—</option>
           <option>FISCAL</option><option>FOPAG</option><option>CONT</option><option>SOC</option><option>FINANC</option><option>PF</option><option>CONTABILIDADE</option><option>OUTROS</option>
         </select>
       </div>
-      <div class="dm-field dm-full"><label class="dm-lbl">Descrição da atividade</label><input type="text" class="dm-input" id="tm-desc" placeholder="Descreva o que foi feito..."></div>
-      <div class="dm-field"><label class="dm-lbl">Tempo gasto</label><input type="text" class="dm-input" id="tm-tempo" placeholder="00:50"></div>
-      <div class="dm-field"><label class="dm-lbl">Data</label><input type="date" class="dm-input" id="tm-data"></div>
+      <div class="dm-field dm-full"><label class="dm-lbl">Descrição da atividade *</label><input type="text" class="dm-input" id="tm-desc" placeholder="Descreva o que foi feito..." required></div>
+      <div class="dm-field"><label class="dm-lbl">Tempo gasto *</label><input type="text" class="dm-input" id="tm-tempo" placeholder="00:50" required></div>
+      <div class="dm-field"><label class="dm-lbl">Data *</label><input type="date" class="dm-input" id="tm-data" required></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close="modal-time-add">Cancelar</button>
@@ -4045,7 +4045,7 @@ document.getElementById('btn-time-save').addEventListener('click',()=>{
   const desc=document.getElementById('tm-desc').value.trim();
   const tempo=normalizeTempo(document.getElementById('tm-tempo').value.trim());
   const data=document.getElementById('tm-data').value;
-  if(!empresa||!tempo){alert('Preencha ao menos Empresa e Tempo gasto.');return;}
+  if(!empresa||!colab||!setor||!desc||!tempo||!data){alert('Preencha todos os campos: Empresa, Colaborador, Setor, Descrição da atividade, Tempo gasto e Data.');return;}
   {const isAdmin=state.currentUser&&state.currentUser.role==='admin';const todayStr=new Date().toISOString().slice(0,10);if(!isAdmin&&data&&data<todayStr){alert('Não é possível lançar tempo em datas anteriores a hoje. Selecione a data de hoje ou uma data futura.');return;}}
   const entry={id:__timeEditId||timeUid(),empresa,colaborador:colab,setor,descricao:desc,tempo,data,srcType:null,srcId:null,criadoPor:(state.currentUser?state.currentUser.username:''),origem:'manual'};
   if(__timeEditId){const idx=timeState.data.findIndex(r=>r.id===__timeEditId);if(idx>=0)timeState.data[idx]=entry;}
