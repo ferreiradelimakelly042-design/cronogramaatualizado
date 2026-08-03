@@ -489,25 +489,25 @@ tr.row-expanded td{background:#F0F6FF!important;}
     <div class="title">CRONOGRAMA<small>Acompanhamento de atividades por cliente</small></div>
     <div class="right">
       <span class="who" id="who-label"></span>
-      <button class="btn btn-green" id="btn-add-row">+ Nova atividade</button>
-      <button class="btn btn-secondary" id="btn-import" style="display:none;">Importar .xlsx</button>
-      <button class="btn btn-secondary" id="btn-export">Exportar .xlsx</button>
+      <span style="display:none !important;">
+        <button class="btn btn-green" id="btn-add-row">+ Nova atividade</button>
+        <button class="btn btn-secondary" id="btn-import">Importar .xlsx</button>
+        <button class="btn btn-secondary" id="btn-export">Exportar .xlsx</button>
+        <button class="btn btn-danger" id="btn-new-month">🗓 Novo Mês</button>
+        <button class="btn btn-danger" id="btn-del-month">🗑 Excluir Mês</button>
+      </span>
       <button class="btn btn-secondary" id="btn-users" style="display:none;">Usuários</button>
-      <button class="btn btn-danger" id="btn-new-month" style="display:none;">🗓 Novo Mês</button>
-      <button class="btn btn-danger" id="btn-del-month" style="display:none;">🗑 Excluir Mês</button>
       <button class="btn btn-ghost" id="btn-logout">Sair</button>
     </div>
   </div>
 
   <div class="mod-nav">
-    <div class="mod-tab active" data-mod="fiscal">CRONOGRAMA MENSAL</div>
-    <div class="mod-tab" data-mod="cont">CONTABILIDADE</div>
-    <div class="mod-tab" data-mod="time">⏱ TIME</div>
+    <div class="mod-tab active" data-mod="time">⏱ TIME</div>
     <div class="mod-tab" data-mod="recibos">🧾 RECIBOS</div>
   </div>
 
-  <!-- MÓDULO FISCAL -->
-  <div id="mod-fiscal">
+  <!-- MÓDULO FISCAL (desativado — oculto permanentemente) -->
+  <div id="mod-fiscal" style="display:none !important;">
     <div class="stats" id="stats-bar"></div>
     <div class="filters">
       <input type="text" id="f-search" placeholder="Buscar empresa ou atividade...">
@@ -541,8 +541,8 @@ tr.row-expanded td{background:#F0F6FF!important;}
     <div class="footer-note">Dados salvos localmente neste navegador. Clique em qualquer linha para abrir e editar todos os campos.</div>
   </div>
 
-  <!-- MÓDULO CONTABILIDADE -->
-  <div id="mod-cont">
+  <!-- MÓDULO CONTABILIDADE (desativado — oculto permanentemente) -->
+  <div id="mod-cont" style="display:none !important;">
     <div class="cont-toolbar">
       <button class="btn btn-green" id="btn-cont-add">+ Nova empresa</button>
       <button class="btn btn-secondary" id="btn-cont-import" style="display:none;">Importar .xlsx</button>
@@ -1771,21 +1771,17 @@ function enterApp(){
   document.getElementById('view-app').style.display='block';
   const isAdmin=state.currentUser.role==='admin';
   document.getElementById('who-label').innerHTML=`Olá, <b>${state.currentUser.nome}</b><span class="role-pill">${isAdmin?'Admin':'Colaborador'}</span>${window._fbDb?'<span style="margin-left:6px;font-size:11px;color:#059669;font-weight:700;" title="Dados sincronizados com Firebase">☁️ online</span>':'<span style="margin-left:6px;font-size:11px;color:#f59e0b;font-weight:700;" title="Sem Firebase — modo local">💾 local</span>'}`;
-  document.getElementById('btn-import').style.display=isAdmin?'inline-block':'none';
   document.getElementById('btn-users').style.display=isAdmin?'inline-block':'none';
-  document.getElementById('btn-new-month').style.display=isAdmin?'inline-block':'none';
-  document.getElementById('btn-del-month').style.display=isAdmin?'inline-block':'none';
-  document.getElementById('f-resp').style.display='inline-block';
-  document.getElementById('btn-cont-import').style.display=isAdmin?'inline-block':'none';
-  document.getElementById('btn-cont-reset').style.display=isAdmin?'inline-block':'none';
   document.getElementById('btn-relatorio-gerencial').style.display=isAdmin?'inline-block':'none';
   document.getElementById('btn-time-reset').style.display=isAdmin?'inline-block':'none';
-  document.getElementById('mod-fiscal').style.display='block';
+  // Módulos CRONOGRAMA MENSAL e CONTABILIDADE foram removidos da interface;
+  // o app agora abre direto no módulo TIME.
+  document.getElementById('mod-fiscal').style.display='none';
   document.getElementById('mod-cont').style.display='none';
-  document.getElementById('mod-time').style.display='none';
+  document.getElementById('mod-time').style.display='block';
   document.getElementById('mod-recibos').style.display='none';
-  buildFilterOptions();contBuildFilterOptions();
-  state.page=1;renderAll();
+  state.page=1;
+  timeRenderAll();
 }
 
 /* =========================================================
@@ -1793,15 +1789,14 @@ function enterApp(){
    ========================================================= */
 document.querySelectorAll('.mod-tab').forEach(tab=>{
   tab.addEventListener('click',()=>{
-    const mod=tab.dataset.mod;
+    const mod=tab.dataset.mod; // apenas 'time' ou 'recibos' — os demais módulos foram removidos
     document.querySelectorAll('.mod-tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
-    document.getElementById('mod-fiscal').style.display=mod==='fiscal'?'block':'none';
-    document.getElementById('mod-cont').style.display=mod==='cont'?'block':'none';
+    document.getElementById('mod-fiscal').style.display='none';
+    document.getElementById('mod-cont').style.display='none';
     document.getElementById('mod-time').style.display=mod==='time'?'block':'none';
     document.getElementById('mod-recibos').style.display=mod==='recibos'?'block':'none';
     document.getElementById('mod-relatorio').style.display='none';
-    if(mod==='cont'){contBuildFilterOptions();contRenderAll();}
     if(mod==='time'){timeRenderAll();}
     if(mod==='recibos'){reciboRenderAll(); if(typeof garantirPdfjs==='function') garantirPdfjs().catch(()=>{});}
   });
