@@ -754,6 +754,7 @@ tr.row-expanded td{background:#F0F6FF!important;}
     <!-- Linha 2: filtros + anexar PDF -->
     <div style="display:flex;align-items:center;gap:6px;padding:7px 16px;border-bottom:2px solid var(--border);background:#f8f9fb;flex-wrap:wrap;">
       <button id="btn-recibo-attach" style="padding:5px 13px;background:#fff;color:#374151;border:1px solid var(--border);border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">📎 Anexar recibo (PDF)</button>
+      <button id="btn-recibo-reset-all" title="Apaga todos os PDFs anexados e zera o status de todos os registros, em todas as abas. Somente admin." style="display:none;padding:5px 13px;background:#fff;color:#B91C1C;border:1px solid #B91C1C;border-radius:6px;font-size:12.5px;font-weight:600;cursor:pointer;">🗑️ Apagar tudo (Admin)</button>
       <span style="flex:1"></span>
       <select id="recibo-aba" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;">
         <option value="">Obrigação (todas)</option>
@@ -874,7 +875,7 @@ tr.row-expanded td{background:#F0F6FF!important;}
     <button class="close-x" data-close="modal-new-month">✕</button>
     <h2>🗓 Virada de Mês</h2>
     <p style="font-size:13px;color:var(--text-soft);margin-bottom:18px;">
-      Selecione o novo mês. As atividades do <b>Cronograma Mensal</b> serão copiadas com status zerados e prazos mantidos. Os <b>Recibos</b> também terão os status resetados para Pendente (PDFs anexados são preservados).<br>
+      Selecione o novo mês. As atividades do <b>Cronograma Mensal</b> serão copiadas com status zerados e prazos mantidos. Os <b>Recibos</b> também terão os status resetados para Pendente e os PDFs anexados serão apagados.<br>
       Se um prazo já passou e o status está em branco, a atividade ficará automaticamente <span style="color:var(--danger);font-weight:700;">Vencido</span>.
     </p>
     <div class="field" style="margin-bottom:18px;">
@@ -883,7 +884,7 @@ tr.row-expanded td{background:#F0F6FF!important;}
     </div>
     <div style="background:var(--accent-soft);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--brand-dark);margin-bottom:18px;">
       <b>Cronograma:</b> zera status, sub, obs, tempo — mantém empresa, atividade, responsáveis, prazos<br>
-      <b>Recibos:</b> zera status (Pendente) — mantém PDFs já anexados
+      <b>Recibos:</b> zera status (Pendente) e apaga os PDFs anexados de todas as abas
     </div>
     <div class="modal-actions" style="justify-content:space-between;">
       <button class="btn btn-ghost" data-close="modal-new-month">Cancelar</button>
@@ -1774,6 +1775,8 @@ function enterApp(){
   document.getElementById('btn-users').style.display=isAdmin?'inline-block':'none';
   document.getElementById('btn-relatorio-gerencial').style.display=isAdmin?'inline-block':'none';
   document.getElementById('btn-time-reset').style.display=isAdmin?'inline-block':'none';
+  const btnReciboResetAll=document.getElementById('btn-recibo-reset-all');
+  if(btnReciboResetAll) btnReciboResetAll.style.display=isAdmin?'inline-block':'none';
   // Módulos CRONOGRAMA MENSAL e CONTABILIDADE foram removidos da interface;
   // o app agora abre direto no módulo TIME.
   document.getElementById('mod-fiscal').style.display='none';
@@ -4176,29 +4179,16 @@ function doRollMonth(mesVal,newPeriodo){
   const sel=document.getElementById('f-periodo');
   if(sel){sel.value=newPeriodo;}
 
-  // Reset módulo RECIBOS: zera status dos registros (mantém PDFs anexados e estrutura)
+  // Reset módulo RECIBOS: zera status e apaga os PDFs anexados de todas as abas
+  // (não faz sentido manter PDFs de recibos de um mês para o outro)
   try{
-    const reciboRaw=localStorage.getItem('recibo_data_v2');
-    if(reciboRaw){
-      const rd=JSON.parse(reciboRaw);
-      Object.keys(rd.abas||{}).forEach(aba=>{
-        (rd.abas[aba]||[]).forEach(reg=>{
-          if(reg.status!=='n/a'){
-            reg.status='pendente';
-            reg.ok_auto=false;
-            // Mantém pdf_data/pdf_name para histórico mas reseta ok
-          }
-        });
-      });
-      localStorage.setItem('recibo_data_v2',JSON.stringify(rd));
-      if(typeof window.reciboRenderAll==='function') window.reciboRenderAll();
-    }
+    if(typeof window.reciboResetTudo==='function') window.reciboResetTudo();
   }catch(e){ console.warn('Reset recibos:',e); }
 
   // Feedback no modal
   const fb=document.getElementById('nm-feedback');
   fb.style.color='var(--st-feito-fg)';
-  fb.innerHTML='✓ '+novas.length+' atividades criadas para <b>'+fmtMonthYear(newPeriodo)+'</b> e recibos resetados. Feche e veja o resultado.';
+  fb.innerHTML='✓ '+novas.length+' atividades criadas para <b>'+fmtMonthYear(newPeriodo)+'</b> e recibos resetados (PDFs apagados). Feche e veja o resultado.';
 
   // Remove botão de confirmação
   const btn2=document.getElementById('nm-confirmar2');
@@ -4887,6 +4877,30 @@ tryRestoreSession();
     }
   }
   function temPdf(r){ return !!(r && (r.pdf_data || r.pdf_ref)); }
+
+  /* ── RESET TOTAL: apaga todos os PDFs anexados e zera status ─────
+     Usado (1) manualmente pelo botão "Apagar tudo (Admin)" e
+     (2) automaticamente na Virada de Mês — não faz sentido manter
+     PDFs de recibos de um mês para o outro.                        */
+  function reciboResetTudo(){
+    Object.keys(RS.abas||{}).forEach(aba=>{
+      (RS.abas[aba]||[]).forEach(reg=>{
+        if(reg.status!=='n/a'){
+          reg.status='pendente';
+          reg.ok_auto=false;
+        }
+        if(reg.pdf_ref && window._fbDb){
+          fbSet('cronograma/pdfs/'+reg.pdf_ref, null).catch(e=>console.warn('FB remover pdf:',e));
+        }
+        reg.pdf_data=null;
+        reg.pdf_ref=null;
+        reg.recibo_path='';
+      });
+    });
+    rsSave();
+    reciboRenderAll();
+  }
+  window.reciboResetTudo=reciboResetTudo;
   function abrirPdf(r){
     if(r.pdf_data){
       const w=window.open();
@@ -6239,6 +6253,20 @@ tryRestoreSession();
 
   document.getElementById('btn-recibo-import-xlsx').addEventListener('click',()=>inXlsx.click());
   document.getElementById('btn-recibo-attach').addEventListener('click',()=>inPdf.click());
+
+  /* ── APAGAR TUDO (ADMIN) ─────────────────────────────── */
+  const btnReciboResetAll=document.getElementById('btn-recibo-reset-all');
+  if(btnReciboResetAll){
+    btnReciboResetAll.addEventListener('click', ()=>{
+      if(!state.currentUser || state.currentUser.role!=='admin') return;
+      const totalReg=Object.keys(RS.abas||{}).reduce((s,a)=>s+(RS.abas[a]||[]).length,0);
+      if(!totalReg){ alert('Não há registros de recibos para apagar.'); return; }
+      if(confirm('⚠️ Isso vai apagar TODOS os PDFs anexados e zerar o status de TODOS os registros de recibos, em todas as abas ('+Object.keys(RS.abas||{}).length+' aba(s), '+totalReg+' registro(s)). Esta ação não pode ser desfeita.\n\nDeseja continuar?')){
+        reciboResetTudo();
+        alert('✅ Recibos: PDFs apagados e status zerados em todas as abas.');
+      }
+    });
+  }
 
   /* ── ADICIONAR LINHA MANUALMENTE ────────────────────── */
   function abrirModalReciboAdd(){
