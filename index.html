@@ -3932,27 +3932,35 @@ function exportTimeXLSX(){
     ['LANÇAMENTOS DETALHADOS — '+gerado],
     ['EMPRESA','COLABORADOR','SETOR','DESCRIÇÃO DA ATIVIDADE','TEMPO','DATA','ORIGEM']
   ];
-  rows.slice().sort((a,b)=>(a.data||'').localeCompare(b.data||'')).forEach(r=>{
+  const detRowsSorted=rows.slice().sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  detRowsSorted.forEach(r=>{
     detData.push([r.empresa||'',r.colaborador||'',r.setor||'',r.descricao||'',r.tempo||'',r.data?fmtDateBR(r.data):'',r.srcType?'Automático':'Manual']);
   });
   const wsDet=styledSheet(detData,[28,16,10,42,9,12,12],1);
 
   // Filtro (AutoFilter) + fórmula que soma o TEMPO respeitando apenas as
   // linhas visíveis conforme o filtro aplicado na própria planilha do Excel.
-  // Não altera nenhum dado existente — só ativa o filtro no cabeçalho e
+  // Não altera nenhum dado existente — só ativa o filtro no cabeçalho, cria
+  // uma coluna auxiliar oculta (minutos em número, para a soma funcionar) e
   // escreve a fórmula de soma numa célula ao lado da tabela.
   if(rows.length){
     const lastDetRow=detData.length; // linha (1-based) da última linha de dados
     wsDet['!autofilter']={ref:'A2:G'+lastDetRow};
-    const tempoRange='E3:E'+lastDetRow;
-    const somaFormula='TEXT(SUMPRODUCT(SUBTOTAL(103,OFFSET($E$3,ROW('+tempoRange+')-ROW($E$3),0,1))*IFERROR(TIMEVALUE('+tempoRange+'),0)),"[h]:mm")';
+    // Coluna L (oculta): TEMPO em minutos (número), usada só pela fórmula.
+    detRowsSorted.forEach((r,idx)=>{
+      const rIdx=2+idx; // 0-based: linha 3 do Excel = índice 2
+      wsDet[XLSX.utils.encode_cell({r:rIdx,c:11})]={t:'n',v:parseTempo(r.tempo)};
+    });
+    const helperRange='L3:L'+lastDetRow;
+    const somaFormula='TEXT(SUBTOTAL(109,'+helperRange+')/1440,"[h]:mm")';
     wsDet['I2']={t:'s',v:'TOTAL DE HORAS (FILTRO)',s:ST_HEAD};
     wsDet['J2']={t:'str',v:formatMinutes(totalMin),f:somaFormula,s:ST_HEAD};
     if(!wsDet['!cols'])wsDet['!cols']=[];
     wsDet['!cols'][8]={wch:22};
     wsDet['!cols'][9]={wch:12};
+    wsDet['!cols'][11]={hidden:true};
     const detRef=XLSX.utils.decode_range(wsDet['!ref']);
-    if(detRef.e.c<9)detRef.e.c=9;
+    if(detRef.e.c<11)detRef.e.c=11;
     wsDet['!ref']=XLSX.utils.encode_range(detRef);
   }
 
