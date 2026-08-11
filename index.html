@@ -3937,6 +3937,25 @@ function exportTimeXLSX(){
   });
   const wsDet=styledSheet(detData,[28,16,10,42,9,12,12],1);
 
+  // Filtro (AutoFilter) + fórmula que soma o TEMPO respeitando apenas as
+  // linhas visíveis conforme o filtro aplicado na própria planilha do Excel.
+  // Não altera nenhum dado existente — só ativa o filtro no cabeçalho e
+  // escreve a fórmula de soma numa célula ao lado da tabela.
+  if(rows.length){
+    const lastDetRow=detData.length; // linha (1-based) da última linha de dados
+    wsDet['!autofilter']={ref:'A2:G'+lastDetRow};
+    const tempoRange='E3:E'+lastDetRow;
+    const somaFormula='TEXT(SUMPRODUCT(SUBTOTAL(103,OFFSET($E$3,ROW('+tempoRange+')-ROW($E$3),0,1))*IFERROR(TIMEVALUE('+tempoRange+'),0)),"[h]:mm")';
+    wsDet['I2']={t:'s',v:'TOTAL DE HORAS (FILTRO)',s:ST_HEAD};
+    wsDet['J2']={t:'str',v:formatMinutes(totalMin),f:somaFormula,s:ST_HEAD};
+    if(!wsDet['!cols'])wsDet['!cols']=[];
+    wsDet['!cols'][8]={wch:22};
+    wsDet['!cols'][9]={wch:12};
+    const detRef=XLSX.utils.decode_range(wsDet['!ref']);
+    if(detRef.e.c<9)detRef.e.c=9;
+    wsDet['!ref']=XLSX.utils.encode_range(detRef);
+  }
+
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,wsResumo,'Resumo');
   XLSX.utils.book_append_sheet(wb,wsEmp,'Por Empresa');
