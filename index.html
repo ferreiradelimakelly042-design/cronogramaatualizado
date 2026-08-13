@@ -504,6 +504,7 @@ tr.row-expanded td{background:#F0F6FF!important;}
   <div class="mod-nav">
     <div class="mod-tab active" data-mod="time">⏱ TIME</div>
     <div class="mod-tab" data-mod="recibos">🧾 RECIBOS</div>
+    <div class="mod-tab" data-mod="links">🔗 LINKS</div>
   </div>
 
   <!-- MÓDULO FISCAL (desativado — oculto permanentemente) -->
@@ -605,6 +606,16 @@ tr.row-expanded td{background:#F0F6FF!important;}
       </table>
     </div>
     <div class="footer-note">Lançamentos automáticos vêm dos cronogramas (campo TEMPO). Você pode editar ou adicionar manualmente.</div>
+  </div>
+
+  <!-- =========================================================
+       MÓDULO LINKS (automação)
+       ========================================================= -->
+  <div id="mod-links" style="display:none;">
+    <div style="padding:20px 24px;">
+      <div style="font-size:14px;font-weight:700;color:var(--brand-dark);margin-bottom:14px;">🔗 Links de Automação</div>
+      <div id="links-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;"></div>
+    </div>
   </div>
 
   <!-- =========================================================
@@ -1792,18 +1803,60 @@ function enterApp(){
    ========================================================= */
 document.querySelectorAll('.mod-tab').forEach(tab=>{
   tab.addEventListener('click',()=>{
-    const mod=tab.dataset.mod; // apenas 'time' ou 'recibos' — os demais módulos foram removidos
+    const mod=tab.dataset.mod; // 'time', 'recibos' ou 'links'
     document.querySelectorAll('.mod-tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('mod-fiscal').style.display='none';
     document.getElementById('mod-cont').style.display='none';
     document.getElementById('mod-time').style.display=mod==='time'?'block':'none';
     document.getElementById('mod-recibos').style.display=mod==='recibos'?'block':'none';
+    document.getElementById('mod-links').style.display=mod==='links'?'block':'none';
     document.getElementById('mod-relatorio').style.display='none';
     if(mod==='time'){timeRenderAll();}
     if(mod==='recibos'){reciboRenderAll(); if(typeof garantirPdfjs==='function') garantirPdfjs().catch(()=>{});}
+    if(mod==='links'){linksRenderAll();}
   });
 });
+
+/* =========================================================
+   MÓDULO LINKS — automação (ferramentas externas)
+   ========================================================= */
+const LINKS_AUTOMACAO=[
+  {
+    titulo:'Prefeitura',
+    descricao:'Ferramenta de automação para rotinas da prefeitura.',
+    icone:'🏛️',
+    url:'https://ferreiradelimakelly042-design.github.io/prefeitura/'
+  },
+  {
+    titulo:'Conferência de Razão',
+    descricao:'Comparador/conferência de lançamentos do razão contábil.',
+    icone:'📒',
+    url:'https://ferreiradelimakelly042-design.github.io/conferencia-de-raz-o/'
+  }
+];
+
+function linksRenderAll(){
+  const grid=document.getElementById('links-grid');
+  if(!grid) return;
+  grid.innerHTML='';
+  LINKS_AUTOMACAO.forEach(item=>{
+    const card=document.createElement('a');
+    card.href=item.url;
+    card.target='_blank';
+    card.rel='noopener noreferrer';
+    card.style.cssText='display:block;text-decoration:none;color:inherit;background:#fff;border:1px solid var(--border);border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:box-shadow .15s,transform .15s;';
+    card.onmouseenter=()=>{card.style.boxShadow='0 4px 14px rgba(0,0,0,.12)';card.style.transform='translateY(-2px)';};
+    card.onmouseleave=()=>{card.style.boxShadow='0 1px 3px rgba(0,0,0,.06)';card.style.transform='none';};
+    card.innerHTML=`
+      <div style="font-size:26px;margin-bottom:8px;">${item.icone}</div>
+      <div style="font-size:14.5px;font-weight:700;color:var(--brand-dark);margin-bottom:4px;">${item.titulo}</div>
+      <div style="font-size:12.5px;color:#6b7280;line-height:1.4;margin-bottom:10px;">${item.descricao}</div>
+      <div style="font-size:12px;font-weight:600;color:#2D6CDF;">Abrir ferramenta →</div>
+    `;
+    grid.appendChild(card);
+  });
+}
 
 /* =========================================================
    FILTROS FISCAL
