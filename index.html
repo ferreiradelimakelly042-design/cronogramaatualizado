@@ -4927,8 +4927,13 @@ tryRestoreSession();
 
   /* ── PERSISTÊNCIA ────────────────────────────────────── */
   function rsLoad(){
+    /* Guarda a aba que o usuário escolheu: o JSON do localStorage/Firebase
+       traz um abaAtiva antigo e sobrescrevia a seleção, fazendo a aba clicada
+       nunca ficar azul. */
+    const abaEscolhida = RS && RS.abaAtiva;
     try{ const s=localStorage.getItem(LS_KEY); if(s) RS=JSON.parse(s); }catch(e){}
     if(!RS.abas) RS.abas={};
+    if(abaEscolhida && RS.abas[abaEscolhida]) RS.abaAtiva=abaEscolhida;
   }
   /* PDFs em base64 NÃO ficam mais dentro de cronograma/recibos.
      Cada PDF vai para cronograma/pdfs/<id> e o registro guarda só a
