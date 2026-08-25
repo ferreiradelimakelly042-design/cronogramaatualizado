@@ -5166,15 +5166,23 @@ tryRestoreSession();
   }
 
   /* ── USUÁRIO LOGADO ──────────────────────────────────── */
+  /* IMPORTANTE: 'state' é declarado com const no topo do script, então NÃO
+     existe como window.state. Usar window.state fazia currentUser() devolver
+     sempre null — era por isso que o admin não enxergava o botão de excluir. */
   function currentUser(){
-    if(!window.state||!window.state.currentUser) return null;
+    if(typeof state==='undefined'||!state||!state.currentUser) return null;
     return {
-      username:(window.state.currentUser.username||'').toUpperCase(),
-      nome:(window.state.currentUser.nome||'').toUpperCase(),
-      role:window.state.currentUser.role||'colaborador'
+      username:(state.currentUser.username||'').toUpperCase(),
+      nome:(state.currentUser.nome||'').toUpperCase(),
+      role:state.currentUser.role||'colaborador'
     };
   }
+  /* Enquanto a coluna RESPONSÁVEL dos recibos não estiver preenchida, todo
+     mundo continua vendo todas as linhas (comportamento atual). Troque para
+     true quando quiser que cada colaborador veja só os recibos dele. */
+  const FILTRAR_RECIBOS_POR_RESPONSAVEL = false;
   function filtrarPorResp(registros){
+    if(!FILTRAR_RECIBOS_POR_RESPONSAVEL) return registros;
     const u=currentUser();
     if(!u||u.role==='admin') return registros;
     const uname=norm(u.username), unome=norm(u.nome);
@@ -6060,6 +6068,9 @@ tryRestoreSession();
       <th data-rcolkey="acoes" style="${TH}min-width:80px;cursor:default;">Ações</th>
     </tr>`;
 
+    const __u = currentUser();
+    const podeExcluirTudo = !!(__u && __u.role === 'admin');
+
     tbody.innerHTML=registros.map((r,i)=>{
       // Badge status
       const badge=r.status==='ok'
@@ -6089,7 +6100,7 @@ tryRestoreSession();
           <button data-attach="${i}" title="Anexar PDF" style="padding:3px 9px;font-size:11px;border:1px solid #2563eb;border-radius:5px;background:#fff;color:#2563eb;cursor:pointer;">📎</button>
           ${r.status!=='ok'?`<button data-ok="${i}" title="Marcar OK" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #059669;border-radius:5px;background:#fff;color:#059669;cursor:pointer;">✓</button>`:`<button data-unok="${i}" title="Voltar para pendente" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #92400e;border-radius:5px;background:#fff;color:#92400e;cursor:pointer;">↩</button>`}
           ${temPdf(r)?`<button data-del="${i}" title="Remover PDF" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #dc2626;border-radius:5px;background:#fff;color:#dc2626;cursor:pointer;">✕</button>`:''}
-          ${r._manual?`<button data-del-row="${i}" title="Excluir linha" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #9f1239;border-radius:5px;background:#fff;color:#9f1239;cursor:pointer;">🗑</button>`:''}
+          ${(r._manual||podeExcluirTudo)?`<button data-del-row="${i}" title="Excluir linha" style="margin-left:4px;padding:3px 9px;font-size:11px;border:1px solid #9f1239;border-radius:5px;background:#fff;color:#9f1239;cursor:pointer;">🗑</button>`:''}
         </td>
       </tr>`;
     }).join('');
@@ -6171,10 +6182,20 @@ tryRestoreSession();
     });
     tbody.querySelectorAll('[data-del-row]').forEach(el=>{
       el.addEventListener('click',()=>{
-        if(!confirm('Excluir esta linha? Esta ação não pode ser desfeita.')) return;
         const r=registros[parseInt(el.dataset.delRow)];
-        const idx=RS.abas[r._aba].findIndex(x=>x._manual&&norm(x.empresa)===norm(r.empresa)&&norm(x.obrigacao||'')===norm(r.obrigacao||'')&&(x.periodo||'')===(r.periodo||''));
-        if(idx>=0){ RS.abas[r._aba].splice(idx,1); rsSave(); reciboRenderAll(); }
+        const u=currentUser();
+        const isAdmin=!!(u&&u.role==='admin');
+        // linha manual: qualquer um pode excluir. linha importada: só admin.
+        if(!r._manual&&!isAdmin) return;
+        if(!confirm('Excluir a linha de "'+r.empresa+'"? Esta ação não pode ser desfeita.')) return;
+        const idx=RS.abas[r._aba].findIndex(x=>norm(x.empresa)===norm(r.empresa)&&norm(x.obrigacao||'')===norm(r.obrigacao||'')&&(x.periodo||'')===(r.periodo||''));
+        if(idx>=0){
+          const reg=RS.abas[r._aba][idx];
+          // remove tambem o PDF anexado do Firebase, para nao ficar arquivo orfao no banco
+          if(reg.pdf_ref && window._fbDb){ fbSet('cronograma/pdfs/'+reg.pdf_ref, null).catch(()=>{}); }
+          RS.abas[r._aba].splice(idx,1);
+          rsSave(); reciboRenderAll();
+        }
       });
     });
     reciboApplyColVisibility();
